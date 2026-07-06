@@ -61,6 +61,13 @@ export interface StateSource {
   shape?: ValueShape;
   /** Field count, for monolithic-store detection. */
   fieldCount?: number;
+  /** Set when an async effect feeds this source (server-state-in-client-state). */
+  serverFed?: {
+    /** The useEffect call site — the grouping key for findings. */
+    effect: SourceLoc;
+    /** Setter also called outside the effect — a prefilled, user-edited draft. */
+    editedOutsideEffect: boolean;
+  };
 }
 
 export interface ComponentNode {

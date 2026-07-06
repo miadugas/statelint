@@ -1089,7 +1089,7 @@ function analyzeComponent(
   });
 
   // Pass 3: state fed from async effects is a server cache living client-side.
-  reclassifyServerFedState(comp, setterBindings, sources);
+  reclassifyServerFedState(comp, setterBindings, sources, parents);
 
   collectPropPasses(comp, propPasses);
 }
@@ -1098,18 +1098,26 @@ function analyzeComponent(
  * useState/useReducer whose setter is called inside a useEffect doing async
  * work (fetch/await/axios) is caching server data in client state — the
  * classifier upgrade that powers the server-state-in-client-state detector.
+ *
+ * Each fed source records WHICH effect fed it (findings group per effect, not
+ * per field) and whether its setter is also called outside the effect — that's
+ * a prefilled, user-edited draft, which reads differently than a pure cache.
  */
 function reclassifyServerFedState(
   comp: ComponentInfo,
   setterBindings: Map<string, StateId>,
   sources: Map<StateId, StateSource>,
+  parents: ParentMap,
 ): void {
+  const effectCallbacks = new Set<TSESTree.Node>();
+
   walk(comp.fn, (node) => {
     if (node.type !== "CallExpression") return;
     if (node.callee.type !== "Identifier" || node.callee.name !== "useEffect")
       return;
     const callback = asFunction(node.arguments[0]);
     if (!callback) return;
+    effectCallbacks.add(callback);
 
     let asyncWork = false;
     const fedStateIds = new Set<StateId>();
@@ -1123,10 +1131,34 @@ function reclassifyServerFedState(
     });
 
     if (!asyncWork) return;
+    const effectLoc = toLoc(comp.file, node);
     for (const stateId of fedStateIds) {
       const source = sources.get(stateId);
-      if (source) source.classification = "server-cache";
+      if (!source) continue;
+      source.classification = "server-cache";
+      // First feeding effect wins as the grouping anchor.
+      source.serverFed ??= { effect: effectLoc, editedOutsideEffect: false };
     }
+  });
+
+  if (effectCallbacks.size === 0) return;
+
+  // Draft detection: a fed setter called OUTSIDE every effect callback means
+  // the user edits this state too (onChange etc.) — prefilled form draft.
+  walk(comp.fn, (node) => {
+    if (node.type !== "CallExpression" || node.callee.type !== "Identifier")
+      return;
+    const stateId = setterBindings.get(node.callee.name);
+    if (!stateId) return;
+    const source = sources.get(stateId);
+    if (!source?.serverFed) return;
+
+    let cursor: TSESTree.Node | undefined = node;
+    while (cursor && cursor !== comp.fn) {
+      if (effectCallbacks.has(cursor)) return; // inside an effect — not an edit
+      cursor = parents.get(cursor);
+    }
+    source.serverFed.editedOutsideEffect = true;
   });
 }
 

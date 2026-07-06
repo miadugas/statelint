@@ -1,25 +1,62 @@
 /**
- * Server-state-in-client-state — the wedge detector. A useState/useReducer
+ * Server-state-in-client-state — the wedge detector. useState/useReducer
  * classified as 'server-cache' (fed by async work in an effect) is a
  * hand-rolled server cache that belongs in a query library.
+ *
+ * Findings group PER EFFECT, not per field: one fetch feeding
+ * firstName/lastName/email is one problem, not three. When every fed field is
+ * also edited outside the effect, it's a prefilled form draft — real, but a
+ * different conversation, so the finding softens to info.
  */
 
-import type { StateGraph } from "../graph/schema.js";
+import type { StateGraph, StateSource } from "../graph/schema.js";
 import type { Finding } from "./types.js";
 
 export function detectServerStateInClientState(graph: StateGraph): Finding[] {
-  return graph
-    .sourcesOf("server-cache")
-    .filter(
-      (source) => source.kind === "useState" || source.kind === "useReducer",
-    )
-    .map((source) => ({
+  // Group fed sources by the effect that feeds them.
+  const byEffect = new Map<string, StateSource[]>();
+  for (const source of graph.sources.values()) {
+    if (source.kind !== "useState" && source.kind !== "useReducer") continue;
+    if (source.classification !== "server-cache") continue;
+    const effect = source.serverFed?.effect;
+    const key = effect
+      ? `${effect.file}:${effect.line}:${effect.col}`
+      : source.id;
+    const group = byEffect.get(key);
+    if (group) group.push(source);
+    else byEffect.set(key, [source]);
+  }
+
+  const findings: Finding[] = [];
+  for (const group of byEffect.values()) {
+    const sorted = [...group].sort((a, b) => a.loc.line - b.loc.line);
+    const first = sorted[0]!;
+    const names = sorted.map((s) => `'${s.name}'`).join(", ");
+    const drafts = sorted.filter((s) => s.serverFed?.editedOutsideEffect);
+    const allDrafts = drafts.length === sorted.length;
+
+    const subject =
+      sorted.length === 1
+        ? `${names} holds server data (fetched in an effect) but lives in ${first.kind}`
+        : `One effect caches server data in ${sorted.length} ${first.kind} variables (${names})`;
+
+    findings.push({
       rule: "server-state-in-client-state",
-      severity: "warn" as const,
-      message: `'${source.name}' holds server data (fetched in an effect) but lives in ${source.kind} — a hand-rolled cache with no dedup, refetch, or staleness handling.`,
-      recommendation:
-        "Move to TanStack Query (or RTK Query in Redux apps): useQuery replaces the useState + useEffect + fetch triple.",
-      loc: source.loc,
-      path: source.ownerComponentId ? [source.ownerComponentId] : undefined,
-    }));
+      severity: allDrafts ? "info" : "warn",
+      message: allDrafts
+        ? `${subject} — and the user edits ${sorted.length === 1 ? "it" : "them"} too: a prefilled form draft built on a hand-rolled fetch.`
+        : `${subject} — a hand-rolled cache with no dedup, refetch, or staleness handling${
+            drafts.length > 0
+              ? ` (${drafts.map((s) => `'${s.name}'`).join(", ")} also user-edited)`
+              : ""
+          }.`,
+      recommendation: allDrafts
+        ? "Fetch with useQuery and seed the draft from its data (or a form library’s defaultValues) — separate the fetching concern from the editing concern."
+        : "Move to TanStack Query (or RTK Query in Redux apps): useQuery replaces the useState + useEffect + fetch triple.",
+      loc: first.serverFed?.effect ?? first.loc,
+      path: first.ownerComponentId ? [first.ownerComponentId] : undefined,
+    });
+  }
+
+  return findings;
 }
