@@ -465,15 +465,28 @@ function createGraph(
 
 // ─── Entry point ───
 
-export function buildStateGraph(files: SourceFileInput[]): StateGraph {
+export interface BuildOptions {
+  /** Called when a file fails to parse; the file is skipped. Default: rethrow. */
+  onParseError?: (path: string, error: unknown) => void;
+}
+
+export function buildStateGraph(
+  files: SourceFileInput[],
+  options: BuildOptions = {},
+): StateGraph {
   const componentsByName = new Map<string, ComponentInfo>();
   const parents: ParentMap = new WeakMap();
-  const asts: TSESTree.Program[] = [];
 
   for (const file of files) {
     const jsx = !file.path.endsWith(".ts");
-    const ast = parse(file.code, { jsx, loc: true });
-    asts.push(ast);
+    let ast: TSESTree.Program;
+    try {
+      ast = parse(file.code, { jsx, loc: true });
+    } catch (error) {
+      if (!options.onParseError) throw error;
+      options.onParseError(file.path, error);
+      continue;
+    }
     walk(ast, () => {}, parents); // populate parent links once per file
     collectComponents(ast, file.path, componentsByName);
   }
