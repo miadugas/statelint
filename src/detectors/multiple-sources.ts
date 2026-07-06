@@ -12,8 +12,8 @@
 import type { StateGraph, StateSource } from "../graph/schema.js";
 import type { Finding } from "./types.js";
 
-/** Kinds that hold app-global client state — grows as adapters land (redux-slice next). */
-const GLOBAL_KINDS = new Set(["context", "zustand"]);
+/** Kinds that hold app-global client state. */
+const GLOBAL_KINDS = new Set(["context", "zustand", "redux-slice"]);
 
 /** Entities too generic to mean anything — matching on these is noise, not signal. */
 const GENERIC_ENTITIES = new Set([
@@ -37,6 +37,8 @@ const GENERIC_ENTITIES = new Set([
 export function entityKey(name: string): string | null {
   let key = name;
   if (/^use[A-Z]/.test(key)) key = key.slice(3); // hook-style store names
+  const verb = /^(get|fetch)(?=[A-Z])/.exec(key); // RTK endpoint names: getUser → User
+  if (verb) key = key.slice(verb[0].length);
 
   const AFFIXES = /(Context|Provider|Store|State|Slice|Ctx)$/;
   while (AFFIXES.test(key)) key = key.replace(AFFIXES, "");

@@ -46,7 +46,7 @@ export function detectOverGlobalizedState(graph: StateGraph): Finding[] {
       continue;
     }
 
-    if (source.kind === "zustand") {
+    if (source.kind === "zustand" || source.kind === "redux-slice") {
       const readers = graph.edges.filter(
         (e) => e.type === "reads" && e.to === source.id,
       );

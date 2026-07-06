@@ -75,12 +75,21 @@ interface StoreDecl {
   fields?: string[];
 }
 
+/** An RTK `createSlice(...)` declaration. Identity is the slice `name` property. */
+interface SliceDecl {
+  sliceName: string;
+  loc: SourceLoc;
+  fields?: string[];
+}
+
 /** Everything statelint knows about one parsed file. */
 interface FileRecord {
   path: string;
   components: Map<string, ComponentInfo>;
   contexts: Map<string, ContextDecl>;
   stores: Map<string, StoreDecl>;
+  slices: SliceDecl[];
+  rtkQueryEndpoints: Map<string, SourceLoc>; // endpoint name → declaration site
   hooks: Map<string, HookInfo>;
   imports: Map<string, ImportRef>; // local name → where it came from
   exports: Map<string, string>; // exported name ('default' allowed) → local symbol name
@@ -205,6 +214,8 @@ function collectFileRecord(ast: TSESTree.Program, file: string): FileRecord {
     components: new Map(),
     contexts: new Map(),
     stores: new Map(),
+    slices: [],
+    rtkQueryEndpoints: new Map(),
     hooks: new Map(),
     imports: new Map(),
     exports: new Map(),
@@ -256,6 +267,12 @@ function collectFileRecord(ast: TSESTree.Program, file: string): FileRecord {
         });
         return;
       }
+      const slice = rtkSliceDecl(node.init, name, toLoc(file, node), record);
+      if (slice) {
+        record.slices.push(slice);
+        return;
+      }
+      if (collectRtkApiEndpoints(node.init, toLoc(file, node), record)) return;
       const direct = asFunction(node.init);
       if (isHookName(name)) {
         if (direct) addHook(name, direct);
@@ -768,6 +785,208 @@ function analyzeStoreUsage(
   });
 }
 
+// ─── Redux / RTK adapter ───
+
+function importedFrom(
+  record: FileRecord,
+  name: string,
+  prefix: string,
+): boolean {
+  return record.imports.get(name)?.source.startsWith(prefix) === true;
+}
+
+/** `createSlice({ name: 'cart', initialState: {...} })` — identity is the `name` prop. */
+function rtkSliceDecl(
+  init: TSESTree.Node,
+  varName: string,
+  loc: SourceLoc,
+  record: FileRecord,
+): SliceDecl | null {
+  if (init.type !== "CallExpression") return null;
+  if (init.callee.type !== "Identifier" || init.callee.name !== "createSlice")
+    return null;
+  if (!importedFrom(record, "createSlice", "@reduxjs/toolkit")) return null;
+
+  const config = init.arguments[0];
+  let sliceName = varName;
+  let fields: string[] | undefined;
+  if (config?.type === "ObjectExpression") {
+    for (const prop of config.properties) {
+      if (prop.type !== "Property" || prop.key.type !== "Identifier") continue;
+      if (
+        prop.key.name === "name" &&
+        prop.value.type === "Literal" &&
+        typeof prop.value.value === "string"
+      ) {
+        sliceName = prop.value.value;
+      }
+      if (
+        prop.key.name === "initialState" &&
+        prop.value.type === "ObjectExpression"
+      ) {
+        fields = [];
+        for (const field of prop.value.properties) {
+          if (field.type === "Property" && field.key.type === "Identifier") {
+            fields.push(field.key.name);
+          }
+        }
+      }
+    }
+  }
+  return { sliceName, loc, fields };
+}
+
+/** `createApi({ endpoints: (b) => ({ getUser: b.query(...) }) })` — collect query endpoints. */
+function collectRtkApiEndpoints(
+  init: TSESTree.Node,
+  loc: SourceLoc,
+  record: FileRecord,
+): boolean {
+  if (init.type !== "CallExpression") return false;
+  if (init.callee.type !== "Identifier" || init.callee.name !== "createApi")
+    return false;
+  if (!importedFrom(record, "createApi", "@reduxjs/toolkit")) return false;
+
+  const config = init.arguments[0];
+  if (config?.type !== "ObjectExpression") return true;
+  for (const prop of config.properties) {
+    if (
+      prop.type !== "Property" ||
+      prop.key.type !== "Identifier" ||
+      prop.key.name !== "endpoints"
+    )
+      continue;
+    const builderFn = asFunction(prop.value);
+    if (!builderFn) continue;
+
+    let endpointsObject: TSESTree.ObjectExpression | null = null;
+    if (builderFn.body.type === "ObjectExpression")
+      endpointsObject = builderFn.body;
+    else if (builderFn.body.type === "BlockStatement") {
+      for (const stmt of builderFn.body.body) {
+        if (
+          stmt.type === "ReturnStatement" &&
+          stmt.argument?.type === "ObjectExpression"
+        ) {
+          endpointsObject = stmt.argument;
+          break;
+        }
+      }
+    }
+    if (!endpointsObject) continue;
+
+    for (const endpoint of endpointsObject.properties) {
+      if (endpoint.type !== "Property" || endpoint.key.type !== "Identifier")
+        continue;
+      // Only builder.query(...) endpoints are cached server reads; mutations aren't sources.
+      if (
+        endpoint.value.type === "CallExpression" &&
+        endpoint.value.callee.type === "MemberExpression" &&
+        endpoint.value.callee.property.type === "Identifier" &&
+        endpoint.value.callee.property.name === "query"
+      ) {
+        record.rtkQueryEndpoints.set(endpoint.key.name, loc);
+      }
+    }
+  }
+  return true;
+}
+
+/** StateIds: slice identity is the slice name; endpoint identity is the endpoint name. */
+function sliceStateId(sliceName: string): StateId {
+  return `redux:${sliceName}`;
+}
+function rtkEndpointStateId(endpoint: string): StateId {
+  return `rtkq:${endpoint}`;
+}
+
+/** `useGetUserQuery` → `getUser`; null when the name isn't a generated RTK hook. */
+function rtkHookEndpoint(name: string): string | null {
+  const match = /^use([A-Z]\w*)Query$/.exec(name);
+  if (!match?.[1]) return null;
+  return match[1].charAt(0).toLowerCase() + match[1].slice(1);
+}
+
+/** Which top-level state slices does a selector touch? `(s) => s.cart.items` → ['cart']. */
+function selectorSliceNames(selectorArg: TSESTree.Node | undefined): string[] {
+  const fn = asFunction(selectorArg);
+  if (!fn) return []; // imported/named selector — cross-file selector analysis is v2
+  const param = fn.params[0];
+  const names = new Set<string>();
+
+  if (param?.type === "ObjectPattern") {
+    for (const prop of param.properties) {
+      if (prop.type === "Property" && prop.key.type === "Identifier") {
+        names.add(prop.key.name);
+      }
+    }
+  } else if (param?.type === "Identifier") {
+    const stateName = param.name;
+    walk(fn.body, (node) => {
+      if (
+        node.type === "MemberExpression" &&
+        node.object.type === "Identifier" &&
+        node.object.name === stateName &&
+        node.property.type === "Identifier" &&
+        !node.computed
+      ) {
+        names.add(node.property.name);
+      }
+    });
+  }
+  return [...names];
+}
+
+/** Emit reads edges for useSelector slice access and generated RTK Query hooks. */
+function analyzeReduxUsage(
+  comp: ComponentInfo,
+  from: FileRecord,
+  edges: Edge[],
+  sliceIdsByName: Map<string, StateId>,
+  endpointIdsByName: Map<string, StateId>,
+): void {
+  const seen = new Set<string>();
+  const push = (edge: Edge, key: string) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push(edge);
+  };
+
+  walk(comp.fn, (node) => {
+    if (node.type !== "CallExpression" || node.callee.type !== "Identifier")
+      return;
+    const calleeName = node.callee.name;
+
+    // useSelector from react-redux, or the typed useAppSelector convention.
+    const isSelectorHook =
+      (calleeName === "useSelector" &&
+        importedFrom(from, "useSelector", "react-redux")) ||
+      calleeName === "useAppSelector";
+    if (isSelectorHook) {
+      for (const sliceName of selectorSliceNames(node.arguments[0])) {
+        const sliceId = sliceIdsByName.get(sliceName);
+        if (sliceId)
+          push(
+            { type: "reads", from: comp.id, to: sliceId, via: "selector" },
+            `reads|${sliceId}`,
+          );
+      }
+      return;
+    }
+
+    // Generated RTK Query hooks: useGetUserQuery() → endpoint getUser.
+    const endpoint = rtkHookEndpoint(calleeName);
+    if (endpoint) {
+      const endpointId = endpointIdsByName.get(endpoint);
+      if (endpointId)
+        push(
+          { type: "reads", from: comp.id, to: endpointId, via: "hook" },
+          `reads|${endpointId}`,
+        );
+    }
+  });
+}
+
 // ─── Per-component analysis ───
 
 const HOOK_KINDS = { useState: "useState", useReducer: "useReducer" } as const;
@@ -1093,6 +1312,39 @@ export function buildStateGraph(
     }
   }
 
+  // Register Redux slices + RTK Query endpoints; identity is the slice/endpoint
+  // name (store-global), so lookups during usage analysis are by name.
+  const sliceIdsByName = new Map<string, StateId>();
+  const endpointIdsByName = new Map<string, StateId>();
+  for (const record of records.values()) {
+    for (const slice of record.slices) {
+      const stateId = sliceStateId(slice.sliceName);
+      sliceIdsByName.set(slice.sliceName, stateId);
+      sources.set(stateId, {
+        id: stateId,
+        kind: "redux-slice",
+        classification: "global-client",
+        name: slice.sliceName,
+        loc: slice.loc,
+        shape: slice.fields
+          ? { kind: "object", fields: slice.fields }
+          : undefined,
+        fieldCount: slice.fields?.length,
+      });
+    }
+    for (const [endpoint, loc] of record.rtkQueryEndpoints) {
+      const stateId = rtkEndpointStateId(endpoint);
+      endpointIdsByName.set(endpoint, stateId);
+      sources.set(stateId, {
+        id: stateId,
+        kind: "rtk-query",
+        classification: "server-cache",
+        name: endpoint,
+        loc,
+      });
+    }
+  }
+
   const queryLocs = new Map<string, SourceLoc>();
   const hookUse = computeHookSharedUse(records, queryLocs);
 
@@ -1101,6 +1353,7 @@ export function buildStateGraph(
       analyzeComponent(comp, parents, sources, edges, propPasses);
       analyzeSharedStateUsage(comp, record, records, hookUse, queryLocs, edges);
       analyzeStoreUsage(comp, record, records, edges);
+      analyzeReduxUsage(comp, record, edges, sliceIdsByName, endpointIdsByName);
     }
   }
 
