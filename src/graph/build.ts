@@ -293,7 +293,46 @@ function analyzeComponent(
     }
   });
 
+  // Pass 3: state fed from async effects is a server cache living client-side.
+  reclassifyServerFedState(comp, setterBindings, sources);
+
   collectPropPasses(comp, propPasses);
+}
+
+/**
+ * useState/useReducer whose setter is called inside a useEffect doing async
+ * work (fetch/await/axios) is caching server data in client state — the
+ * classifier upgrade that powers the server-state-in-client-state detector.
+ */
+function reclassifyServerFedState(
+  comp: ComponentInfo,
+  setterBindings: Map<string, StateId>,
+  sources: Map<StateId, StateSource>,
+): void {
+  walk(comp.fn, (node) => {
+    if (node.type !== "CallExpression") return;
+    if (node.callee.type !== "Identifier" || node.callee.name !== "useEffect")
+      return;
+    const callback = asFunction(node.arguments[0]);
+    if (!callback) return;
+
+    let asyncWork = false;
+    const fedStateIds = new Set<StateId>();
+    walk(callback.body, (inner) => {
+      if (inner.type === "AwaitExpression") asyncWork = true;
+      if (inner.type !== "Identifier") return;
+      // Any reference counts: setX(...) calls AND point-free .then(setX).
+      if (inner.name === "fetch" || inner.name === "axios") asyncWork = true;
+      const stateId = setterBindings.get(inner.name);
+      if (stateId) fedStateIds.add(stateId);
+    });
+
+    if (!asyncWork) return;
+    for (const stateId of fedStateIds) {
+      const source = sources.get(stateId);
+      if (source) source.classification = "server-cache";
+    }
+  });
 }
 
 /** Record `<Child foo={expr} />` observations for known-component children. */
