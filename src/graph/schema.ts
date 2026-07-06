@@ -105,6 +105,13 @@ export interface StateGraph {
   sources: Map<StateId, StateSource>;
   edges: Edge[];
 
+  /**
+   * Usage the builder saw but could not attribute — e.g. useSelector with an
+   * imported named selector. When nonzero, detectors must not make
+   * "exactly N readers" claims over the affected kinds; reads are undercounted.
+   */
+  unresolved: { selectorReads: number };
+
   /** All edges that read a given source (any `via`). */
   readsOf(id: StateId): Edge[];
   /** All sources classified into a given bucket. */

@@ -944,6 +944,7 @@ function analyzeReduxUsage(
   edges: Edge[],
   sliceIdsByName: Map<string, StateId>,
   endpointIdsByName: Map<string, StateId>,
+  unresolved: { selectorReads: number },
 ): void {
   const seen = new Set<string>();
   const push = (edge: Edge, key: string) => {
@@ -963,7 +964,14 @@ function analyzeReduxUsage(
         importedFrom(from, "useSelector", "react-redux")) ||
       calleeName === "useAppSelector";
     if (isSelectorHook) {
-      for (const sliceName of selectorSliceNames(node.arguments[0])) {
+      const sliceNames = selectorSliceNames(node.arguments[0]);
+      if (sliceNames.length === 0) {
+        // Imported/named selector — we can't attribute this read to a slice.
+        // Record the miss so detectors don't claim exhaustive reader counts.
+        unresolved.selectorReads++;
+        return;
+      }
+      for (const sliceName of sliceNames) {
         const sliceId = sliceIdsByName.get(sliceName);
         if (sliceId)
           push(
@@ -1212,11 +1220,13 @@ function createGraph(
   components: Map<ComponentId, ComponentNode>,
   sources: Map<StateId, StateSource>,
   edges: Edge[],
+  unresolved: { selectorReads: number },
 ): StateGraph {
   return {
     components,
     sources,
     edges,
+    unresolved,
     readsOf(id: StateId): Edge[] {
       return edges.filter(
         (e) => (e.type === "reads" || e.type === "consumes") && e.to === id,
@@ -1282,6 +1292,7 @@ export function buildStateGraph(
   const sources = new Map<StateId, StateSource>();
   const edges: Edge[] = [];
   const propPasses: PropPass[] = [];
+  const unresolved = { selectorReads: 0 };
 
   // Register context + store sources. Both classify 'global-client' by
   // definition — they exist to share state across the tree.
@@ -1353,7 +1364,14 @@ export function buildStateGraph(
       analyzeComponent(comp, parents, sources, edges, propPasses);
       analyzeSharedStateUsage(comp, record, records, hookUse, queryLocs, edges);
       analyzeStoreUsage(comp, record, records, edges);
-      analyzeReduxUsage(comp, record, edges, sliceIdsByName, endpointIdsByName);
+      analyzeReduxUsage(
+        comp,
+        record,
+        edges,
+        sliceIdsByName,
+        endpointIdsByName,
+        unresolved,
+      );
     }
   }
 
@@ -1397,5 +1415,5 @@ export function buildStateGraph(
     }
   }
 
-  return createGraph(componentNodes, sources, edges);
+  return createGraph(componentNodes, sources, edges, unresolved);
 }

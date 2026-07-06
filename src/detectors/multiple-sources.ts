@@ -27,6 +27,17 @@ const GENERIC_ENTITIES = new Set([
   "store",
   "value",
   "values",
+  // Generic per-component UI words: two screens each having `error`/`loading`
+  // useState is normal, not a shared entity. (Solstice dogfood, 2026-07-06.)
+  "error",
+  "errors",
+  "loading",
+  "message",
+  "result",
+  "results",
+  "status",
+  "success",
+  "warning",
 ]);
 
 /**

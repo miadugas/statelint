@@ -143,6 +143,47 @@ describe("redux adapter — RTK Query", () => {
   });
 });
 
+describe("false-positive guards (from the solstice dogfood)", () => {
+  it("does not treat two components' generic error/loading state as a shared entity", () => {
+    const screen = (name: string) => `
+      export function ${name}() {
+        const [error, setError] = useState(null);
+        const [loading, setLoading] = useState(true);
+        useEffect(() => {
+          fetch('/api/${name.toLowerCase()}')
+            .then((r) => r.json())
+            .catch((e) => setError(e.message))
+            .finally(() => setLoading(false));
+        }, []);
+        return error ? <p>{error}</p> : null;
+      }
+    `;
+    const graph = buildStateGraph([
+      { path: "src/A.tsx", code: screen("ScreenA") },
+      { path: "src/B.tsx", code: screen("ScreenB") },
+    ]);
+    expect(detectMultipleSourcesOfTruth(graph)).toHaveLength(0);
+  });
+
+  it("counts unresolved selector reads so detectors avoid exhaustive-count claims", () => {
+    const graph = buildStateGraph([
+      { path: "src/cartSlice.ts", code: CART_SLICE },
+      {
+        path: "src/Named.tsx",
+        code: `
+          import { useSelector } from 'react-redux';
+          import { selectCart } from './selectors';
+          export function Named() {
+            const cart = useSelector(selectCart);
+            return <div>{cart.total}</div>;
+          }
+        `,
+      },
+    ]);
+    expect(graph.unresolved.selectorReads).toBe(1);
+  });
+});
+
 describe("cross-library detection with redux", () => {
   it("entityKey strips RTK endpoint verbs", () => {
     expect(entityKey("getUser")).toBe("user");

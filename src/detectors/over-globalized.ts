@@ -47,6 +47,12 @@ export function detectOverGlobalizedState(graph: StateGraph): Finding[] {
     }
 
     if (source.kind === "zustand" || source.kind === "redux-slice") {
+      // Redux reads via imported named selectors aren't attributable yet —
+      // when any exist, reader counts are floors, not totals, so an
+      // "exactly one reader" claim would be dishonest. (Solstice dogfood.)
+      if (source.kind === "redux-slice" && graph.unresolved.selectorReads > 0)
+        continue;
+
       const readers = graph.edges.filter(
         (e) => e.type === "reads" && e.to === source.id,
       );
