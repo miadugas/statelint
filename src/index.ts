@@ -1,3 +1,5 @@
+export { buildStateGraph } from "./graph/build.js";
+export type { SourceFileInput } from "./graph/build.js";
 export type {
   StateClass,
   StateKind,
