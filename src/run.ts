@@ -6,6 +6,7 @@
 import type { SourceFileInput } from "./graph/build.js";
 import { buildStateGraph } from "./graph/build.js";
 import type { BuildOptions } from "./graph/build.js";
+import { detectOverBroadSelector } from "./detectors/over-broad-selector.js";
 import { detectOverGlobalizedState } from "./detectors/over-globalized.js";
 import { detectPropDrilling } from "./detectors/prop-drilling.js";
 import { detectServerStateInClientState } from "./detectors/server-state.js";
@@ -26,6 +27,7 @@ export function runStatelint(
   const findings = [
     ...detectServerStateInClientState(graph),
     ...detectOverGlobalizedState(graph),
+    ...detectOverBroadSelector(graph),
     ...detectPropDrilling(graph, {
       minBlindIntermediates: options.minBlindIntermediates,
     }),

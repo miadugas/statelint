@@ -68,11 +68,19 @@ interface HookInfo {
   fn: FunctionLike;
 }
 
+/** A zustand `create(...)` store declaration. */
+interface StoreDecl {
+  name: string;
+  loc: SourceLoc;
+  fields?: string[];
+}
+
 /** Everything statelint knows about one parsed file. */
 interface FileRecord {
   path: string;
   components: Map<string, ComponentInfo>;
   contexts: Map<string, ContextDecl>;
+  stores: Map<string, StoreDecl>;
   hooks: Map<string, HookInfo>;
   imports: Map<string, ImportRef>; // local name → where it came from
   exports: Map<string, string>; // exported name ('default' allowed) → local symbol name
@@ -196,6 +204,7 @@ function collectFileRecord(ast: TSESTree.Program, file: string): FileRecord {
     path: file,
     components: new Map(),
     contexts: new Map(),
+    stores: new Map(),
     hooks: new Map(),
     imports: new Map(),
     exports: new Map(),
@@ -236,6 +245,15 @@ function collectFileRecord(ast: TSESTree.Program, file: string): FileRecord {
       if (!node.init) return;
       if (isCreateContextCall(node.init)) {
         record.contexts.set(name, { name, loc: toLoc(file, node) });
+        return;
+      }
+      const storeInit = zustandCreateInitializer(node.init, record);
+      if (storeInit !== null) {
+        record.stores.set(name, {
+          name,
+          loc: toLoc(file, node),
+          fields: storeInit.fields,
+        });
         return;
       }
       const direct = asFunction(node.init);
@@ -529,6 +547,140 @@ function analyzeContextUsage(
         push(
           { type: "provides", from: comp.id, to: ctxId },
           `provides|${ctxId}`,
+        );
+    }
+  });
+}
+
+// ─── Zustand adapter ───
+
+/**
+ * Matches `create(fn)` and the curried TS form `create<T>()(fn)`, but only
+ * when `create` is imported from zustand — a bare name match would false-
+ * positive on every other library's `create()`.
+ */
+function zustandCreateInitializer(
+  init: TSESTree.Node,
+  record: FileRecord,
+): { fields?: string[] } | null {
+  if (init.type !== "CallExpression") return null;
+
+  const fromZustand = (name: string) =>
+    record.imports.get(name)?.source.startsWith("zustand") === true;
+
+  let initializerArg: TSESTree.Node | undefined;
+  if (init.callee.type === "Identifier" && fromZustand(init.callee.name)) {
+    initializerArg = init.arguments[0];
+  } else if (
+    init.callee.type === "CallExpression" &&
+    init.callee.callee.type === "Identifier" &&
+    fromZustand(init.callee.callee.name)
+  ) {
+    initializerArg = init.arguments[0]; // create<T>()(fn)
+  } else {
+    return null;
+  }
+
+  const fn = asFunction(initializerArg);
+  if (!fn) return {};
+
+  let objectBody: TSESTree.ObjectExpression | null = null;
+  if (fn.body.type === "ObjectExpression") objectBody = fn.body;
+  else if (fn.body.type === "BlockStatement") {
+    for (const stmt of fn.body.body) {
+      if (
+        stmt.type === "ReturnStatement" &&
+        stmt.argument?.type === "ObjectExpression"
+      ) {
+        objectBody = stmt.argument;
+        break;
+      }
+    }
+  }
+  if (!objectBody) return {};
+
+  const fields: string[] = [];
+  for (const prop of objectBody.properties) {
+    if (prop.type === "Property" && prop.key.type === "Identifier") {
+      fields.push(prop.key.name);
+    }
+  }
+  return { fields };
+}
+
+/** Resolve a store name in a file to its StateId — local first, then imports. */
+function resolveStore(
+  from: FileRecord,
+  name: string,
+  records: Map<string, FileRecord>,
+): StateId | null {
+  if (from.stores.has(name)) return `${from.path}#${name}`;
+
+  const importRef = from.imports.get(name);
+  if (!importRef) return null;
+  const target = resolveModule(from.path, importRef.source, records);
+  if (!target) return null;
+
+  const localName = target.exports.get(importRef.imported);
+  if (!localName || !target.stores.has(localName)) return null;
+  return `${target.path}#${localName}`;
+}
+
+/** Is this selector the whole-store identity (`(s) => s`) — or missing entirely? */
+function isWholeStoreRead(call: TSESTree.CallExpression): boolean {
+  const selector = call.arguments[0];
+  if (!selector) return true; // bare useStore()
+  const fn = asFunction(selector);
+  if (!fn) return false; // a named selector — assume it narrows
+  const param = fn.params[0];
+  return (
+    param?.type === "Identifier" &&
+    fn.body.type === "Identifier" &&
+    fn.body.name === param.name
+  );
+}
+
+/** Emit reads/writes edges for a component's zustand store usage. */
+function analyzeStoreUsage(
+  comp: ComponentInfo,
+  from: FileRecord,
+  records: Map<string, FileRecord>,
+  edges: Edge[],
+): void {
+  const seen = new Set<string>();
+  const push = (edge: Edge, key: string) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push(edge);
+  };
+
+  walk(comp.fn, (node) => {
+    if (node.type !== "CallExpression") return;
+
+    // useStore() / useStore(selector)
+    if (node.callee.type === "Identifier") {
+      const storeId = resolveStore(from, node.callee.name, records);
+      if (!storeId) return;
+      const via = isWholeStoreRead(node) ? "hook" : "selector";
+      push(
+        { type: "reads", from: comp.id, to: storeId, via },
+        `reads|${storeId}|${via}`,
+      );
+      return;
+    }
+
+    // useStore.setState(...)
+    if (
+      node.callee.type === "MemberExpression" &&
+      node.callee.object.type === "Identifier" &&
+      node.callee.property.type === "Identifier" &&
+      node.callee.property.name === "setState"
+    ) {
+      const storeId = resolveStore(from, node.callee.object.name, records);
+      if (storeId)
+        push(
+          { type: "writes", from: comp.id, to: storeId, via: "setState" },
+          `writes|${storeId}`,
         );
     }
   });
@@ -830,8 +982,8 @@ export function buildStateGraph(
   const edges: Edge[] = [];
   const propPasses: PropPass[] = [];
 
-  // Register context sources. Classification is 'global-client' by definition —
-  // a context exists to share state below its provider.
+  // Register context + store sources. Both classify 'global-client' by
+  // definition — they exist to share state across the tree.
   for (const record of records.values()) {
     for (const ctx of record.contexts.values()) {
       const stateId: StateId = `${record.path}#${ctx.name}`;
@@ -843,6 +995,20 @@ export function buildStateGraph(
         loc: ctx.loc,
       });
     }
+    for (const store of record.stores.values()) {
+      const stateId: StateId = `${record.path}#${store.name}`;
+      sources.set(stateId, {
+        id: stateId,
+        kind: "zustand",
+        classification: "global-client",
+        name: store.name,
+        loc: store.loc,
+        shape: store.fields
+          ? { kind: "object", fields: store.fields }
+          : undefined,
+        fieldCount: store.fields?.length,
+      });
+    }
   }
 
   const hookConsumption = computeHookContextConsumption(records);
@@ -851,6 +1017,7 @@ export function buildStateGraph(
     for (const comp of record.components.values()) {
       analyzeComponent(comp, parents, sources, edges, propPasses);
       analyzeContextUsage(comp, record, records, hookConsumption, edges);
+      analyzeStoreUsage(comp, record, records, edges);
     }
   }
 

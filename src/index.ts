@@ -4,6 +4,7 @@ export { detectPropDrilling } from "./detectors/prop-drilling.js";
 export type { PropDrillingOptions } from "./detectors/prop-drilling.js";
 export { detectServerStateInClientState } from "./detectors/server-state.js";
 export { detectOverGlobalizedState } from "./detectors/over-globalized.js";
+export { detectOverBroadSelector } from "./detectors/over-broad-selector.js";
 export type { Finding, Severity } from "./detectors/types.js";
 export type {
   StateClass,
