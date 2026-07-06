@@ -6,6 +6,7 @@
 import type { SourceFileInput } from "./graph/build.js";
 import { buildStateGraph } from "./graph/build.js";
 import type { BuildOptions } from "./graph/build.js";
+import { detectMultipleSourcesOfTruth } from "./detectors/multiple-sources.js";
 import { detectOverBroadSelector } from "./detectors/over-broad-selector.js";
 import { detectOverGlobalizedState } from "./detectors/over-globalized.js";
 import { detectPropDrilling } from "./detectors/prop-drilling.js";
@@ -25,6 +26,7 @@ export function runStatelint(
 ): Finding[] {
   const graph = buildStateGraph(files, { onParseError: options.onParseError });
   const findings = [
+    ...detectMultipleSourcesOfTruth(graph),
     ...detectServerStateInClientState(graph),
     ...detectOverGlobalizedState(graph),
     ...detectOverBroadSelector(graph),
