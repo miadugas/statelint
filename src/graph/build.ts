@@ -54,12 +54,28 @@ interface ImportRef {
   imported: string; // exported name, or 'default'
 }
 
+/** A `createContext(...)` declaration found in a file. */
+interface ContextDecl {
+  name: string;
+  loc: SourceLoc;
+}
+
+/** A custom hook (`function useThing() {…}`) — an analysis unit like a component. */
+interface HookInfo {
+  id: string; // `${file}#${name}`
+  name: string;
+  file: string;
+  fn: FunctionLike;
+}
+
 /** Everything statelint knows about one parsed file. */
 interface FileRecord {
   path: string;
   components: Map<string, ComponentInfo>;
+  contexts: Map<string, ContextDecl>;
+  hooks: Map<string, HookInfo>;
   imports: Map<string, ImportRef>; // local name → where it came from
-  exports: Map<string, string>; // exported name ('default' allowed) → local component name
+  exports: Map<string, string>; // exported name ('default' allowed) → local symbol name
 }
 
 type ParentMap = WeakMap<TSESTree.Node, TSESTree.Node>;
@@ -179,8 +195,14 @@ function collectFileRecord(ast: TSESTree.Program, file: string): FileRecord {
   const record: FileRecord = {
     path: file,
     components: new Map(),
+    contexts: new Map(),
+    hooks: new Map(),
     imports: new Map(),
     exports: new Map(),
+  };
+
+  const addHook = (name: string, fn: FunctionLike) => {
+    record.hooks.set(name, { id: `${file}#${name}`, name, file, fn });
   };
 
   const addComponent = (
@@ -200,19 +222,28 @@ function collectFileRecord(ast: TSESTree.Program, file: string): FileRecord {
   };
 
   walk(ast, (node) => {
-    if (
-      node.type === "FunctionDeclaration" &&
-      node.id &&
-      isCapitalized(node.id.name)
-    ) {
-      addComponent(node.id.name, node, node, false);
+    if (node.type === "FunctionDeclaration" && node.id) {
+      if (isCapitalized(node.id.name)) {
+        addComponent(node.id.name, node, node, false);
+      } else if (isHookName(node.id.name)) {
+        addHook(node.id.name, node);
+      }
       return;
     }
 
     if (node.type === "VariableDeclarator" && node.id.type === "Identifier") {
       const name = node.id.name;
-      if (!isCapitalized(name) || !node.init) return;
+      if (!node.init) return;
+      if (isCreateContextCall(node.init)) {
+        record.contexts.set(name, { name, loc: toLoc(file, node) });
+        return;
+      }
       const direct = asFunction(node.init);
+      if (isHookName(name)) {
+        if (direct) addHook(name, direct);
+        return;
+      }
+      if (!isCapitalized(name)) return;
       const memoized = direct ? null : unwrapMemo(node.init);
       const fn = direct ?? memoized;
       if (fn) addComponent(name, fn, node, memoized !== null);
@@ -316,6 +347,191 @@ function resolveComponent(
   const localName = target.exports.get(importRef.imported);
   if (!localName) return null;
   return target.components.get(localName) ?? null;
+}
+
+// ─── Context adapter ───
+
+/** `createContext(...)` or `React.createContext(...)`. */
+function isCreateContextCall(node: TSESTree.Node): boolean {
+  if (node.type !== "CallExpression") return false;
+  const callee = node.callee;
+  return (
+    (callee.type === "Identifier" && callee.name === "createContext") ||
+    (callee.type === "MemberExpression" &&
+      callee.object.type === "Identifier" &&
+      callee.object.name === "React" &&
+      callee.property.type === "Identifier" &&
+      callee.property.name === "createContext")
+  );
+}
+
+/** Resolve a context name in a file to its StateId — local first, then imports. */
+function resolveContext(
+  from: FileRecord,
+  name: string,
+  records: Map<string, FileRecord>,
+): StateId | null {
+  if (from.contexts.has(name)) return `${from.path}#${name}`;
+
+  const importRef = from.imports.get(name);
+  if (!importRef) return null;
+  const target = resolveModule(from.path, importRef.source, records);
+  if (!target) return null;
+
+  const localName = target.exports.get(importRef.imported);
+  if (!localName || !target.contexts.has(localName)) return null;
+  return `${target.path}#${localName}`;
+}
+
+/** `useThing`, `useLock`, … — the custom-hook naming convention. */
+function isHookName(name: string): boolean {
+  return /^use[A-Z]/.test(name);
+}
+
+/** Resolve a hook name in a file to its HookInfo — local first, then imports. */
+function resolveHook(
+  from: FileRecord,
+  name: string,
+  records: Map<string, FileRecord>,
+): HookInfo | null {
+  const local = from.hooks.get(name);
+  if (local) return local;
+
+  const importRef = from.imports.get(name);
+  if (!importRef) return null;
+  const target = resolveModule(from.path, importRef.source, records);
+  if (!target) return null;
+
+  const localName = target.exports.get(importRef.imported);
+  if (!localName) return null;
+  return target.hooks.get(localName) ?? null;
+}
+
+/** What a function body touches: contexts directly, and which custom hooks it calls. */
+interface ContextUse {
+  ctxIds: Set<StateId>;
+  hookIds: Set<string>;
+}
+
+function scanContextUse(
+  fn: FunctionLike,
+  from: FileRecord,
+  records: Map<string, FileRecord>,
+): ContextUse {
+  const use: ContextUse = { ctxIds: new Set(), hookIds: new Set() };
+  walk(fn, (node) => {
+    if (node.type !== "CallExpression" || node.callee.type !== "Identifier")
+      return;
+    const calleeName = node.callee.name;
+    if (calleeName === "useContext" || calleeName === "use") {
+      const arg = node.arguments[0];
+      if (arg?.type !== "Identifier") return;
+      const ctxId = resolveContext(from, arg.name, records);
+      if (ctxId) use.ctxIds.add(ctxId);
+      return;
+    }
+    if (isHookName(calleeName)) {
+      const hook = resolveHook(from, calleeName, records);
+      if (hook) use.hookIds.add(hook.id);
+    }
+  });
+  return use;
+}
+
+/**
+ * Which contexts does each custom hook consume — including through other
+ * hooks (useLock → useContext(LockContext))? Fixpoint over hook→hook calls.
+ */
+function computeHookContextConsumption(
+  records: Map<string, FileRecord>,
+): Map<string, Set<StateId>> {
+  const uses = new Map<string, ContextUse>();
+  for (const record of records.values()) {
+    for (const hook of record.hooks.values()) {
+      uses.set(hook.id, scanContextUse(hook.fn, record, records));
+    }
+  }
+
+  const consumption = new Map<string, Set<StateId>>();
+  for (const [hookId, use] of uses) {
+    consumption.set(hookId, new Set(use.ctxIds));
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [hookId, use] of uses) {
+      const own = consumption.get(hookId);
+      if (!own) continue;
+      for (const calleeId of use.hookIds) {
+        for (const ctxId of consumption.get(calleeId) ?? []) {
+          if (!own.has(ctxId)) {
+            own.add(ctxId);
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+  return consumption;
+}
+
+/** Emit provides/consumes edges for a component's context usage (direct + via hooks). */
+function analyzeContextUsage(
+  comp: ComponentInfo,
+  from: FileRecord,
+  records: Map<string, FileRecord>,
+  hookConsumption: Map<string, Set<StateId>>,
+  edges: Edge[],
+): void {
+  const seen = new Set<string>();
+  const push = (edge: Edge, key: string) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push(edge);
+  };
+
+  const use = scanContextUse(comp.fn, from, records);
+  for (const hookId of use.hookIds) {
+    for (const ctxId of hookConsumption.get(hookId) ?? []) {
+      use.ctxIds.add(ctxId);
+    }
+  }
+  for (const ctxId of use.ctxIds) {
+    push(
+      { type: "consumes", from: comp.id, to: ctxId, via: "context" },
+      `consumes|${ctxId}`,
+    );
+  }
+
+  walk(comp.fn, (node) => {
+    if (node.type !== "JSXOpeningElement") return;
+
+    // <Ctx.Provider value={...}>
+    if (
+      node.name.type === "JSXMemberExpression" &&
+      node.name.object.type === "JSXIdentifier" &&
+      node.name.property.name === "Provider"
+    ) {
+      const ctxId = resolveContext(from, node.name.object.name, records);
+      if (ctxId)
+        push(
+          { type: "provides", from: comp.id, to: ctxId },
+          `provides|${ctxId}`,
+        );
+      return;
+    }
+
+    // React 19: <Ctx value={...}> — a bare context element used as provider.
+    if (node.name.type === "JSXIdentifier") {
+      const ctxId = resolveContext(from, node.name.name, records);
+      if (ctxId)
+        push(
+          { type: "provides", from: comp.id, to: ctxId },
+          `provides|${ctxId}`,
+        );
+    }
+  });
 }
 
 // ─── Per-component analysis ───
@@ -614,9 +830,27 @@ export function buildStateGraph(
   const edges: Edge[] = [];
   const propPasses: PropPass[] = [];
 
+  // Register context sources. Classification is 'global-client' by definition —
+  // a context exists to share state below its provider.
+  for (const record of records.values()) {
+    for (const ctx of record.contexts.values()) {
+      const stateId: StateId = `${record.path}#${ctx.name}`;
+      sources.set(stateId, {
+        id: stateId,
+        kind: "context",
+        classification: "global-client",
+        name: ctx.name,
+        loc: ctx.loc,
+      });
+    }
+  }
+
+  const hookConsumption = computeHookContextConsumption(records);
+
   for (const record of records.values()) {
     for (const comp of record.components.values()) {
       analyzeComponent(comp, parents, sources, edges, propPasses);
+      analyzeContextUsage(comp, record, records, hookConsumption, edges);
     }
   }
 
