@@ -7,6 +7,8 @@ export { detectOverGlobalizedState } from "./detectors/over-globalized.js";
 export { detectOverBroadSelector } from "./detectors/over-broad-selector.js";
 export { detectMultipleSourcesOfTruth } from "./detectors/multiple-sources.js";
 export type { Finding, Severity } from "./detectors/types.js";
+export { formatFindings, exitCode } from "./format.js";
+export type { FormatOptions } from "./format.js";
 export type {
   StateClass,
   StateKind,

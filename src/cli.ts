@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * statelint CLI — `statelint [paths...] [--min-drill N] [--json]`
- * Exit code 1 when findings exist (the CI gate), 0 when clean.
+ * statelint CLI — `statelint [paths...] [--min-drill N] [--json] [--no-color]`
+ * Exit 1 on warnings/errors (the CI gate); advisory info findings exit 0.
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 import type { SourceFileInput } from "./graph/build.js";
-import type { Finding } from "./detectors/types.js";
+import { exitCode, formatFindings } from "./format.js";
 import { runStatelint } from "./run.js";
 
 const SKIP_DIRS = new Set([
@@ -25,6 +25,7 @@ interface CliArgs {
   minDrill: number | undefined;
   json: boolean;
   help: boolean;
+  noColor: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -33,11 +34,13 @@ function parseArgs(argv: string[]): CliArgs {
     minDrill: undefined,
     json: false,
     help: false,
+    noColor: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === undefined) continue;
     if (arg === "--json") args.json = true;
+    else if (arg === "--no-color") args.noColor = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
     else if (arg === "--min-drill") {
       const value = Number(argv[++i]);
@@ -71,24 +74,6 @@ function discoverFiles(root: string, out: SourceFileInput[]): void {
   }
 }
 
-function printPretty(findings: Finding[]): void {
-  let currentFile = "";
-  for (const finding of findings) {
-    if (finding.loc.file !== currentFile) {
-      currentFile = finding.loc.file;
-      console.log(`\n${currentFile}`);
-    }
-    console.log(
-      `  ${finding.loc.line}:${finding.loc.col}  ${finding.severity}  ${finding.rule}  ${finding.message}`,
-    );
-    console.log(`         ↳ ${finding.recommendation}`);
-  }
-  const label = findings.length === 1 ? "problem" : "problems";
-  console.log(
-    `\n${findings.length === 0 ? "✓ no" : `✖ ${findings.length}`} ${label}`,
-  );
-}
-
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -97,11 +82,14 @@ function main(): void {
         "Options:\n" +
         "  --min-drill N   prop-drilling threshold (blind intermediates, default 2)\n" +
         "  --json          machine-readable output\n" +
-        "  -h, --help      show this help",
+        "  --no-color      disable colored output (also honors NO_COLOR)\n" +
+        "  -h, --help      show this help\n\n" +
+        "Exit codes: 0 clean or info-only, 1 warnings/errors, 2 usage error",
     );
     return;
   }
 
+  const started = performance.now();
   const files: SourceFileInput[] = [];
   for (const path of args.paths) {
     discoverFiles(path, files);
@@ -118,11 +106,27 @@ function main(): void {
       console.error(`statelint: skipped ${path} (parse error: ${reason})`);
     },
   });
+  const durationMs = performance.now() - started;
 
-  if (args.json) console.log(JSON.stringify(findings, null, 2));
-  else printPretty(findings);
+  if (args.json) {
+    console.log(JSON.stringify(findings, null, 2));
+  } else {
+    const color =
+      !args.noColor &&
+      process.stdout.isTTY === true &&
+      process.env["NO_COLOR"] === undefined;
+    console.log(
+      formatFindings(findings, {
+        color,
+        cwd: process.cwd(),
+        width: Math.min(process.stdout.columns ?? 80, 100),
+        fileCount: files.length,
+        durationMs,
+      }),
+    );
+  }
 
-  process.exit(findings.length > 0 ? 1 : 0);
+  process.exit(exitCode(findings));
 }
 
 main();
