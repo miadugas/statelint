@@ -425,18 +425,81 @@ function resolveHook(
   return target.hooks.get(localName) ?? null;
 }
 
-/** What a function body touches: contexts directly, and which custom hooks it calls. */
-interface ContextUse {
+// ─── TanStack Query adapter ───
+
+const QUERY_HOOKS = new Set([
+  "useQuery",
+  "useInfiniteQuery",
+  "useSuspenseQuery",
+]);
+
+/** Is `name` one of the query hooks, imported from TanStack (or legacy react-query)? */
+function isQueryHook(name: string, from: FileRecord): boolean {
+  if (!QUERY_HOOKS.has(name)) return false;
+  const source = from.imports.get(name)?.source;
+  return (
+    source !== undefined &&
+    (source.startsWith("@tanstack/") || source === "react-query")
+  );
+}
+
+/**
+ * Extract the string query key: `useQuery({ queryKey: ['todos'] })` (v5) or
+ * `useQuery(['todos'], fn)` (v4). Dynamic keys return null — an unknown key
+ * gets no source rather than a garbage one.
+ */
+function queryKeyOf(call: TSESTree.CallExpression): string | null {
+  const arg = call.arguments[0];
+  if (!arg) return null;
+
+  let keyArray: TSESTree.Node | undefined;
+  if (arg.type === "ArrayExpression") {
+    keyArray = arg;
+  } else if (arg.type === "ObjectExpression") {
+    for (const prop of arg.properties) {
+      if (
+        prop.type === "Property" &&
+        prop.key.type === "Identifier" &&
+        prop.key.name === "queryKey"
+      ) {
+        keyArray = prop.value;
+        break;
+      }
+    }
+  }
+  if (keyArray?.type !== "ArrayExpression") return null;
+
+  const first = keyArray.elements[0];
+  if (first?.type === "Literal" && typeof first.value === "string")
+    return first.value;
+  return null;
+}
+
+/** StateId for a query — keyed by the query key, NOT the call site: the cache is global. */
+function queryStateId(key: string): StateId {
+  return `query:${key}`;
+}
+
+// ─── Shared-state usage (contexts + queries, direct or through hooks) ───
+
+/** What a function body touches: contexts, query keys, and which custom hooks it calls. */
+interface SharedUse {
   ctxIds: Set<StateId>;
+  queryKeys: Set<string>;
   hookIds: Set<string>;
 }
 
-function scanContextUse(
+function scanSharedUse(
   fn: FunctionLike,
   from: FileRecord,
   records: Map<string, FileRecord>,
-): ContextUse {
-  const use: ContextUse = { ctxIds: new Set(), hookIds: new Set() };
+  queryLocs: Map<string, SourceLoc>,
+): SharedUse {
+  const use: SharedUse = {
+    ctxIds: new Set(),
+    queryKeys: new Set(),
+    hookIds: new Set(),
+  };
   walk(fn, (node) => {
     if (node.type !== "CallExpression" || node.callee.type !== "Identifier")
       return;
@@ -448,6 +511,14 @@ function scanContextUse(
       if (ctxId) use.ctxIds.add(ctxId);
       return;
     }
+    if (isQueryHook(calleeName, from)) {
+      const key = queryKeyOf(node);
+      if (key) {
+        use.queryKeys.add(key);
+        if (!queryLocs.has(key)) queryLocs.set(key, toLoc(from.path, node));
+      }
+      return;
+    }
     if (isHookName(calleeName)) {
       const hook = resolveHook(from, calleeName, records);
       if (hook) use.hookIds.add(hook.id);
@@ -457,49 +528,52 @@ function scanContextUse(
 }
 
 /**
- * Which contexts does each custom hook consume — including through other
- * hooks (useLock → useContext(LockContext))? Fixpoint over hook→hook calls.
+ * What each custom hook consumes — contexts and queries — including through
+ * other hooks (useTodos → useQuery(['todos'])). Fixpoint over hook→hook calls.
  */
-function computeHookContextConsumption(
+function computeHookSharedUse(
   records: Map<string, FileRecord>,
-): Map<string, Set<StateId>> {
-  const uses = new Map<string, ContextUse>();
+  queryLocs: Map<string, SourceLoc>,
+): Map<string, SharedUse> {
+  const uses = new Map<string, SharedUse>();
   for (const record of records.values()) {
     for (const hook of record.hooks.values()) {
-      uses.set(hook.id, scanContextUse(hook.fn, record, records));
+      uses.set(hook.id, scanSharedUse(hook.fn, record, records, queryLocs));
     }
-  }
-
-  const consumption = new Map<string, Set<StateId>>();
-  for (const [hookId, use] of uses) {
-    consumption.set(hookId, new Set(use.ctxIds));
   }
 
   let changed = true;
   while (changed) {
     changed = false;
-    for (const [hookId, use] of uses) {
-      const own = consumption.get(hookId);
-      if (!own) continue;
+    for (const use of uses.values()) {
       for (const calleeId of use.hookIds) {
-        for (const ctxId of consumption.get(calleeId) ?? []) {
-          if (!own.has(ctxId)) {
-            own.add(ctxId);
+        const callee = uses.get(calleeId);
+        if (!callee) continue;
+        for (const ctxId of callee.ctxIds) {
+          if (!use.ctxIds.has(ctxId)) {
+            use.ctxIds.add(ctxId);
+            changed = true;
+          }
+        }
+        for (const key of callee.queryKeys) {
+          if (!use.queryKeys.has(key)) {
+            use.queryKeys.add(key);
             changed = true;
           }
         }
       }
     }
   }
-  return consumption;
+  return uses;
 }
 
-/** Emit provides/consumes edges for a component's context usage (direct + via hooks). */
-function analyzeContextUsage(
+/** Emit consumes/reads/provides edges for a component's shared-state usage. */
+function analyzeSharedStateUsage(
   comp: ComponentInfo,
   from: FileRecord,
   records: Map<string, FileRecord>,
-  hookConsumption: Map<string, Set<StateId>>,
+  hookUse: Map<string, SharedUse>,
+  queryLocs: Map<string, SourceLoc>,
   edges: Edge[],
 ): void {
   const seen = new Set<string>();
@@ -509,16 +583,24 @@ function analyzeContextUsage(
     edges.push(edge);
   };
 
-  const use = scanContextUse(comp.fn, from, records);
+  const use = scanSharedUse(comp.fn, from, records, queryLocs);
   for (const hookId of use.hookIds) {
-    for (const ctxId of hookConsumption.get(hookId) ?? []) {
-      use.ctxIds.add(ctxId);
-    }
+    const consumed = hookUse.get(hookId);
+    if (!consumed) continue;
+    for (const ctxId of consumed.ctxIds) use.ctxIds.add(ctxId);
+    for (const key of consumed.queryKeys) use.queryKeys.add(key);
   }
   for (const ctxId of use.ctxIds) {
     push(
       { type: "consumes", from: comp.id, to: ctxId, via: "context" },
       `consumes|${ctxId}`,
+    );
+  }
+  for (const key of use.queryKeys) {
+    const queryId = queryStateId(key);
+    push(
+      { type: "reads", from: comp.id, to: queryId, via: "hook" },
+      `reads|${queryId}`,
     );
   }
 
@@ -1011,14 +1093,28 @@ export function buildStateGraph(
     }
   }
 
-  const hookConsumption = computeHookContextConsumption(records);
+  const queryLocs = new Map<string, SourceLoc>();
+  const hookUse = computeHookSharedUse(records, queryLocs);
 
   for (const record of records.values()) {
     for (const comp of record.components.values()) {
       analyzeComponent(comp, parents, sources, edges, propPasses);
-      analyzeContextUsage(comp, record, records, hookConsumption, edges);
+      analyzeSharedStateUsage(comp, record, records, hookUse, queryLocs, edges);
       analyzeStoreUsage(comp, record, records, edges);
     }
+  }
+
+  // Register query sources — one per distinct key, identity is the key itself
+  // (the TanStack cache is global; call sites share entries).
+  for (const [key, loc] of queryLocs) {
+    const stateId = queryStateId(key);
+    sources.set(stateId, {
+      id: stateId,
+      kind: "tanstack-query",
+      classification: "server-cache",
+      name: key,
+      loc,
+    });
   }
 
   // Resolve prop passes into edges — local components first, then imports.

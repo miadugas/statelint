@@ -48,30 +48,41 @@ export function entityKey(name: string): string | null {
 
 function describe(source: StateSource): string {
   const kindLabel =
-    source.kind === "context" ? "context" : `${source.kind} store`;
+    source.kind === "context"
+      ? "context"
+      : source.kind === "zustand" || source.kind === "redux-slice"
+        ? `${source.kind} store`
+        : source.kind === "tanstack-query" || source.kind === "rtk-query"
+          ? "query"
+          : source.kind; // useState/useReducer read naturally as-is
   return `${kindLabel} '${source.name}' (${source.loc.file}:${source.loc.line})`;
 }
 
-export function detectMultipleSourcesOfTruth(graph: StateGraph): Finding[] {
+function groupByEntity(sources: StateSource[]): Map<string, StateSource[]> {
   const byEntity = new Map<string, StateSource[]>();
-
-  for (const source of graph.sources.values()) {
-    if (!GLOBAL_KINDS.has(source.kind)) continue;
+  for (const source of sources) {
     const key = entityKey(source.name);
     if (!key) continue;
     const group = byEntity.get(key);
     if (group) group.push(source);
     else byEntity.set(key, [source]);
   }
+  return byEntity;
+}
 
+export function detectMultipleSourcesOfTruth(graph: StateGraph): Finding[] {
   const findings: Finding[] = [];
-  for (const [entity, group] of byEntity) {
+  const all = [...graph.sources.values()];
+
+  // Pass 1: competing GLOBAL owners (context vs zustand vs …).
+  const globalGroups = groupByEntity(
+    all.filter((s) => GLOBAL_KINDS.has(s.kind)),
+  );
+  for (const [entity, group] of globalGroups) {
     if (group.length < 2) continue;
     const sorted = [...group].sort((a, b) =>
       a.loc.file.localeCompare(b.loc.file),
     );
-    const first = sorted[0]!;
-
     findings.push({
       rule: "multiple-sources-of-truth",
       severity: "warn",
@@ -80,7 +91,34 @@ export function detectMultipleSourcesOfTruth(graph: StateGraph): Finding[] {
         .join(", ")}. They will drift.`,
       recommendation:
         "Pick one owner for this entity and delete the others; consumers read the single source (directly or via one adapter hook).",
-      loc: first.loc,
+      loc: sorted[0]!.loc,
+      path: sorted.map((s) => s.id),
+    });
+  }
+
+  // Pass 2: duplicated SERVER caches — a query plus hand-rolled fetch state
+  // (or several hand-rolled caches) holding the same server entity.
+  const serverGroups = groupByEntity(
+    all.filter((s) => s.classification === "server-cache"),
+  );
+  for (const [entity, group] of serverGroups) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort((a, b) =>
+      a.loc.file.localeCompare(b.loc.file),
+    );
+    const hasQuery = sorted.some((s) => s.kind === "tanstack-query");
+    findings.push({
+      rule: "multiple-sources-of-truth",
+      severity: "warn",
+      message: `Server entity '${entity}' is cached in ${sorted.length} independent places: ${sorted
+        .map(describe)
+        .join(
+          ", ",
+        )}. Hand-rolled caches drift from each other${hasQuery ? " and from the query cache" : ""}.`,
+      recommendation: hasQuery
+        ? `Read '${entity}' via the existing query everywhere and delete the manual fetch caches.`
+        : `Cache '${entity}' once in a query library (TanStack Query) and delete the per-component copies.`,
+      loc: sorted[0]!.loc,
       path: sorted.map((s) => s.id),
     });
   }
