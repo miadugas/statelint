@@ -24,7 +24,9 @@ export type StateKind =
   | "zustand"
   | "redux-slice"
   | "rtk-query"
-  | "tanstack-query";
+  | "tanstack-query"
+  | "local-storage"
+  | "session-storage";
 
 // ─── Source locations ───
 

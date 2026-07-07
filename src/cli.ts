@@ -17,8 +17,13 @@ const SKIP_DIRS = new Set([
   "coverage",
   ".git",
   ".next",
+  "__tests__",
+  "__mocks__",
 ]);
 const EXTENSIONS = new Set([".tsx", ".jsx", ".ts"]);
+// Architecture rules describe the app, not its tests — test files write
+// storage keys and mount components in ways that inflate real findings.
+const TEST_FILE = /\.(test|spec)\.[jt]sx?$|\.stories\.[jt]sx?$/;
 
 interface CliArgs {
   paths: string[];
@@ -67,7 +72,10 @@ function discoverFiles(root: string, out: SourceFileInput[]): void {
       if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) {
         discoverFiles(join(root, entry.name), out);
       }
-    } else if (EXTENSIONS.has(extname(entry.name))) {
+    } else if (
+      EXTENSIONS.has(extname(entry.name)) &&
+      !TEST_FILE.test(entry.name)
+    ) {
       const path = join(root, entry.name);
       out.push({ path, code: readFileSync(path, "utf8") });
     }

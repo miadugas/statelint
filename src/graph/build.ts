@@ -497,12 +497,64 @@ function queryStateId(key: string): StateId {
   return `query:${key}`;
 }
 
-// ─── Shared-state usage (contexts + queries, direct or through hooks) ───
+// ─── Web Storage adapter ───
 
-/** What a function body touches: contexts, query keys, and which custom hooks it calls. */
+const STORAGE_METHODS = new Set(["getItem", "setItem", "removeItem"]);
+
+/** StateId for a storage key — the key IS the identity, like query keys. */
+function storageStateId(area: "local" | "session", key: string): StateId {
+  return `storage:${area}:${key}`;
+}
+
+/**
+ * Matches `localStorage.getItem('k')` / `sessionStorage.setItem('k', v)` /
+ * `window.localStorage.…`. Dynamic keys are skipped — an unknown key gets
+ * no source rather than a garbage one.
+ */
+function storageAccessOf(
+  node: TSESTree.CallExpression,
+): { id: StateId; access: "read" | "write" } | null {
+  if (node.callee.type !== "MemberExpression") return null;
+  const { object, property } = node.callee;
+  if (property.type !== "Identifier" || !STORAGE_METHODS.has(property.name))
+    return null;
+
+  let storageName: string | null = null;
+  if (object.type === "Identifier") storageName = object.name;
+  else if (
+    object.type === "MemberExpression" &&
+    object.property.type === "Identifier" &&
+    object.object.type === "Identifier" &&
+    (object.object.name === "window" || object.object.name === "globalThis")
+  ) {
+    storageName = object.property.name;
+  }
+  const area =
+    storageName === "localStorage"
+      ? "local"
+      : storageName === "sessionStorage"
+        ? "session"
+        : null;
+  if (!area) return null;
+
+  const keyArg = node.arguments[0];
+  if (keyArg?.type !== "Literal" || typeof keyArg.value !== "string")
+    return null;
+
+  return {
+    id: storageStateId(area, keyArg.value),
+    access: property.name === "getItem" ? "read" : "write",
+  };
+}
+
+// ─── Shared-state usage (contexts, queries, storage — direct or through hooks) ───
+
+/** What a function body touches: contexts, query keys, storage keys, and hooks it calls. */
 interface SharedUse {
   ctxIds: Set<StateId>;
   queryKeys: Set<string>;
+  storageReads: Set<StateId>;
+  storageWrites: Set<StateId>;
   hookIds: Set<string>;
 }
 
@@ -511,15 +563,28 @@ function scanSharedUse(
   from: FileRecord,
   records: Map<string, FileRecord>,
   queryLocs: Map<string, SourceLoc>,
+  storageLocs: Map<StateId, SourceLoc>,
 ): SharedUse {
   const use: SharedUse = {
     ctxIds: new Set(),
     queryKeys: new Set(),
+    storageReads: new Set(),
+    storageWrites: new Set(),
     hookIds: new Set(),
   };
   walk(fn, (node) => {
-    if (node.type !== "CallExpression" || node.callee.type !== "Identifier")
+    if (node.type !== "CallExpression") return;
+
+    const storage = storageAccessOf(node);
+    if (storage) {
+      if (storage.access === "read") use.storageReads.add(storage.id);
+      else use.storageWrites.add(storage.id);
+      if (!storageLocs.has(storage.id))
+        storageLocs.set(storage.id, toLoc(from.path, node));
       return;
+    }
+
+    if (node.callee.type !== "Identifier") return;
     const calleeName = node.callee.name;
     if (calleeName === "useContext" || calleeName === "use") {
       const arg = node.arguments[0];
@@ -551,13 +616,28 @@ function scanSharedUse(
 function computeHookSharedUse(
   records: Map<string, FileRecord>,
   queryLocs: Map<string, SourceLoc>,
+  storageLocs: Map<StateId, SourceLoc>,
 ): Map<string, SharedUse> {
   const uses = new Map<string, SharedUse>();
   for (const record of records.values()) {
     for (const hook of record.hooks.values()) {
-      uses.set(hook.id, scanSharedUse(hook.fn, record, records, queryLocs));
+      uses.set(
+        hook.id,
+        scanSharedUse(hook.fn, record, records, queryLocs, storageLocs),
+      );
     }
   }
+
+  const spread = (from: Set<string>, into: Set<string>): boolean => {
+    let grew = false;
+    for (const item of from) {
+      if (!into.has(item)) {
+        into.add(item);
+        grew = true;
+      }
+    }
+    return grew;
+  };
 
   let changed = true;
   while (changed) {
@@ -566,18 +646,10 @@ function computeHookSharedUse(
       for (const calleeId of use.hookIds) {
         const callee = uses.get(calleeId);
         if (!callee) continue;
-        for (const ctxId of callee.ctxIds) {
-          if (!use.ctxIds.has(ctxId)) {
-            use.ctxIds.add(ctxId);
-            changed = true;
-          }
-        }
-        for (const key of callee.queryKeys) {
-          if (!use.queryKeys.has(key)) {
-            use.queryKeys.add(key);
-            changed = true;
-          }
-        }
+        if (spread(callee.ctxIds, use.ctxIds)) changed = true;
+        if (spread(callee.queryKeys, use.queryKeys)) changed = true;
+        if (spread(callee.storageReads, use.storageReads)) changed = true;
+        if (spread(callee.storageWrites, use.storageWrites)) changed = true;
       }
     }
   }
@@ -591,6 +663,7 @@ function analyzeSharedStateUsage(
   records: Map<string, FileRecord>,
   hookUse: Map<string, SharedUse>,
   queryLocs: Map<string, SourceLoc>,
+  storageLocs: Map<StateId, SourceLoc>,
   edges: Edge[],
 ): void {
   const seen = new Set<string>();
@@ -600,12 +673,14 @@ function analyzeSharedStateUsage(
     edges.push(edge);
   };
 
-  const use = scanSharedUse(comp.fn, from, records, queryLocs);
+  const use = scanSharedUse(comp.fn, from, records, queryLocs, storageLocs);
   for (const hookId of use.hookIds) {
     const consumed = hookUse.get(hookId);
     if (!consumed) continue;
     for (const ctxId of consumed.ctxIds) use.ctxIds.add(ctxId);
     for (const key of consumed.queryKeys) use.queryKeys.add(key);
+    for (const id of consumed.storageReads) use.storageReads.add(id);
+    for (const id of consumed.storageWrites) use.storageWrites.add(id);
   }
   for (const ctxId of use.ctxIds) {
     push(
@@ -618,6 +693,15 @@ function analyzeSharedStateUsage(
     push(
       { type: "reads", from: comp.id, to: queryId, via: "hook" },
       `reads|${queryId}`,
+    );
+  }
+  for (const id of use.storageReads) {
+    push({ type: "reads", from: comp.id, to: id, via: "hook" }, `reads|${id}`);
+  }
+  for (const id of use.storageWrites) {
+    push(
+      { type: "writes", from: comp.id, to: id, via: "mutate" },
+      `writes|${id}`,
     );
   }
 
@@ -1389,12 +1473,21 @@ export function buildStateGraph(
   }
 
   const queryLocs = new Map<string, SourceLoc>();
-  const hookUse = computeHookSharedUse(records, queryLocs);
+  const storageLocs = new Map<StateId, SourceLoc>();
+  const hookUse = computeHookSharedUse(records, queryLocs, storageLocs);
 
   for (const record of records.values()) {
     for (const comp of record.components.values()) {
       analyzeComponent(comp, parents, sources, edges, propPasses);
-      analyzeSharedStateUsage(comp, record, records, hookUse, queryLocs, edges);
+      analyzeSharedStateUsage(
+        comp,
+        record,
+        records,
+        hookUse,
+        queryLocs,
+        storageLocs,
+        edges,
+      );
       analyzeStoreUsage(comp, record, records, edges);
       analyzeReduxUsage(
         comp,
@@ -1416,6 +1509,19 @@ export function buildStateGraph(
       kind: "tanstack-query",
       classification: "server-cache",
       name: key,
+      loc,
+    });
+  }
+
+  // Register storage sources — identity is `storage:<area>:<key>`; the key
+  // name is the entity. Storage is global AND persistent, but not reactive.
+  for (const [stateId, loc] of storageLocs) {
+    const [, area, ...keyParts] = stateId.split(":");
+    sources.set(stateId, {
+      id: stateId,
+      kind: area === "local" ? "local-storage" : "session-storage",
+      classification: "global-client",
+      name: keyParts.join(":"),
       loc,
     });
   }

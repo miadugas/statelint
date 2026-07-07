@@ -12,8 +12,15 @@
 import type { StateGraph, StateSource } from "../graph/schema.js";
 import type { Finding } from "./types.js";
 
-/** Kinds that hold app-global client state. */
-const GLOBAL_KINDS = new Set(["context", "zustand", "redux-slice"]);
+/** Kinds that hold app-global client state. Storage is global too — the
+ * classic dupe is `user` in a store AND in localStorage with hand-rolled sync. */
+const GLOBAL_KINDS = new Set([
+  "context",
+  "zustand",
+  "redux-slice",
+  "local-storage",
+  "session-storage",
+]);
 
 /** Entities too generic to mean anything — matching on these is noise, not signal. */
 const GENERIC_ENTITIES = new Set([
@@ -67,7 +74,11 @@ function describe(source: StateSource): string {
         ? `${source.kind} store`
         : source.kind === "tanstack-query" || source.kind === "rtk-query"
           ? "query"
-          : source.kind; // useState/useReducer read naturally as-is
+          : source.kind === "local-storage"
+            ? "localStorage key"
+            : source.kind === "session-storage"
+              ? "sessionStorage key"
+              : source.kind; // useState/useReducer read naturally as-is
   return `${kindLabel} '${source.name}' (${source.loc.file}:${source.loc.line})`;
 }
 

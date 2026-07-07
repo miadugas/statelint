@@ -11,6 +11,7 @@ import { detectOverBroadSelector } from "./detectors/over-broad-selector.js";
 import { detectOverGlobalizedState } from "./detectors/over-globalized.js";
 import { detectPropDrilling } from "./detectors/prop-drilling.js";
 import { detectServerStateInClientState } from "./detectors/server-state.js";
+import { detectStorageAsState } from "./detectors/storage-as-state.js";
 import type { Finding } from "./detectors/types.js";
 
 export interface RunOptions {
@@ -30,6 +31,7 @@ export function runStatelint(
     ...detectServerStateInClientState(graph),
     ...detectOverGlobalizedState(graph),
     ...detectOverBroadSelector(graph),
+    ...detectStorageAsState(graph),
     ...detectPropDrilling(graph, {
       minBlindIntermediates: options.minBlindIntermediates,
     }),
