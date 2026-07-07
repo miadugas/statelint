@@ -1,29 +1,15 @@
 #!/usr/bin/env node
 /**
- * statelint CLI — `statelint [paths...] [--min-drill N] [--json] [--no-color]`
+ * statelint CLI — `statelint [paths...] [--min-drill N] [--json] [--no-color] [--ui]`
  * Exit 1 on warnings/errors (the CI gate); advisory info findings exit 0.
+ * --ui serves the findings console locally with one-click rescan.
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { extname, join } from "node:path";
 import type { SourceFileInput } from "./graph/build.js";
+import { discoverFiles } from "./discover.js";
 import { exitCode, formatFindings } from "./format.js";
 import { runStatelint } from "./run.js";
-
-const SKIP_DIRS = new Set([
-  "node_modules",
-  "dist",
-  "build",
-  "coverage",
-  ".git",
-  ".next",
-  "__tests__",
-  "__mocks__",
-]);
-const EXTENSIONS = new Set([".tsx", ".jsx", ".ts"]);
-// Architecture rules describe the app, not its tests — test files write
-// storage keys and mount components in ways that inflate real findings.
-const TEST_FILE = /\.(test|spec)\.[jt]sx?$|\.stories\.[jt]sx?$/;
+import { startConsole } from "./serve.js";
 
 interface CliArgs {
   paths: string[];
@@ -31,6 +17,8 @@ interface CliArgs {
   json: boolean;
   help: boolean;
   noColor: boolean;
+  ui: boolean;
+  port: number;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -40,14 +28,24 @@ function parseArgs(argv: string[]): CliArgs {
     json: false,
     help: false,
     noColor: false,
+    ui: false,
+    port: 8734,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === undefined) continue;
     if (arg === "--json") args.json = true;
     else if (arg === "--no-color") args.noColor = true;
+    else if (arg === "--ui") args.ui = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
-    else if (arg === "--min-drill") {
+    else if (arg === "--port") {
+      const value = Number(argv[++i]);
+      if (!Number.isInteger(value) || value < 0 || value > 65535) {
+        console.error("statelint: --port expects a port number");
+        process.exit(2);
+      }
+      args.port = value;
+    } else if (arg === "--min-drill") {
       const value = Number(argv[++i]);
       if (!Number.isInteger(value) || value < 1) {
         console.error("statelint: --min-drill expects a positive integer");
@@ -60,34 +58,14 @@ function parseArgs(argv: string[]): CliArgs {
   return args;
 }
 
-function discoverFiles(root: string, out: SourceFileInput[]): void {
-  const stats = statSync(root);
-  if (stats.isFile()) {
-    if (EXTENSIONS.has(extname(root)))
-      out.push({ path: root, code: readFileSync(root, "utf8") });
-    return;
-  }
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) {
-        discoverFiles(join(root, entry.name), out);
-      }
-    } else if (
-      EXTENSIONS.has(extname(entry.name)) &&
-      !TEST_FILE.test(entry.name)
-    ) {
-      const path = join(root, entry.name);
-      out.push({ path, code: readFileSync(path, "utf8") });
-    }
-  }
-}
-
-function main(): void {
+async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     console.log(
       "Usage: statelint [paths...] [options]\n\n" +
         "Options:\n" +
+        "  --ui            serve the findings console locally (one-click rescan)\n" +
+        "  --port N        console port (default 8734)\n" +
         "  --min-drill N   prop-drilling threshold (blind intermediates, default 2)\n" +
         "  --json          machine-readable output\n" +
         "  --no-color      disable colored output (also honors NO_COLOR)\n" +
@@ -95,6 +73,15 @@ function main(): void {
         "Exit codes: 0 clean or info-only, 1 warnings/errors, 2 usage error",
     );
     return;
+  }
+
+  if (args.ui) {
+    const { url } = await startConsole(args.paths, args.port);
+    console.log(`statelint console → ${url}`);
+    console.log(
+      `  watching: ${args.paths.join(", ")} — hit Rescan in the browser after edits; Ctrl+C to stop`,
+    );
+    return; // server keeps the process alive
   }
 
   const started = performance.now();
@@ -139,4 +126,4 @@ function main(): void {
   process.exitCode = exitCode(findings);
 }
 
-main();
+void main();

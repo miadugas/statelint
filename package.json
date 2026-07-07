@@ -10,7 +10,7 @@
     ".": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && cp src/console.html dist/console.html",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

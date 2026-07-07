@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>statelint — __REPO__</title>
+    <style>
+      :root {
+        --sans:
+          ui-rounded, -apple-system, BlinkMacSystemFont, "SF Pro Rounded",
+          "SF Pro Text", "Segoe UI", sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Code", monospace;
+        --green: #6cc030;
+        --green-deep: #4e9a1d;
+        --radius-card: 20px;
+        --radius-pill: 999px;
+      }
+      :root[data-theme="light"] {
+        --page: #f4f6f0;
+        --page-glow: radial-gradient(
+          1200px 500px at 85% -10%,
+          #d9efc0 0%,
+          transparent 60%
+        );
+        --surface: #ffffff;
+        --surface-tint: #f3f9e9;
+        --edge: #e2e7da;
+        --edge-strong: #cdd6c2;
+        --text: #1c2415;
+        --text-2: #5b6552;
+        --text-3: #8a927f;
+        --chip-high-bg: #fdecec;
+        --chip-high-fg: #c53030;
+        --chip-med-bg: #fdf3dd;
+        --chip-med-fg: #a16207;
+        --chip-low-bg: #e3f4f6;
+        --chip-low-fg: #0e7490;
+        --btn-grad: linear-gradient(180deg, #8ed94a, #6cc030);
+        --btn-fg: #ffffff;
+        --shadow:
+          0 10px 30px rgba(60, 90, 30, 0.1), 0 2px 6px rgba(60, 90, 30, 0.06);
+        --term-shadow: 0 18px 48px rgba(30, 45, 15, 0.18);
+      }
+      :root[data-theme="dark"] {
+        --page: #0e120a;
+        --page-glow: radial-gradient(
+          1200px 500px at 85% -10%,
+          #1d310e 0%,
+          transparent 60%
+        );
+        --surface: #161c10;
+        --surface-tint: #1a2213;
+        --edge: #242d1a;
+        --edge-strong: #334025;
+        --text: #eef3e6;
+        --text-2: #a9b49a;
+        --text-3: #6e7860;
+        --chip-high-bg: #3a1418;
+        --chip-high-fg: #ff8a8a;
+        --chip-med-bg: #362a0d;
+        --chip-med-fg: #f0c04d;
+        --chip-low-bg: #0d2f35;
+        --chip-low-fg: #6fd4e0;
+        --btn-grad: linear-gradient(180deg, #86d243, #5da828);
+        --btn-fg: #0e120a;
+        --shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+        --term-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        background: var(--page);
+      }
+      body {
+        margin: 0;
+        font-family: var(--sans);
+        color: var(--text);
+        background: var(--page-glow), var(--page);
+        background-attachment: fixed;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px 24px 72px;
+      }
+      button {
+        font-family: inherit;
+        cursor: pointer;
+      }
+      :focus-visible {
+        outline: 3px solid var(--green);
+        outline-offset: 2px;
+        border-radius: 6px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 0 26px;
+        flex-wrap: wrap;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 800;
+        font-size: 21px;
+        letter-spacing: -0.02em;
+      }
+      .logo-badge {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: var(--btn-grad);
+        color: var(--btn-fg);
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        font-weight: 700;
+        box-shadow: var(--shadow);
+      }
+      .header-sub {
+        color: var(--text-3);
+        font-size: 13px;
+        margin-top: 1px;
+      }
+      .spacer {
+        flex: 1;
+      }
+      .chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        font-size: 12.5px;
+        font-weight: 700;
+        padding: 5px 12px;
+        border-radius: var(--radius-pill);
+      }
+      .chip.high {
+        background: var(--chip-high-bg);
+        color: var(--chip-high-fg);
+      }
+      .chip.med {
+        background: var(--chip-med-bg);
+        color: var(--chip-med-fg);
+      }
+      .chip.low {
+        background: var(--chip-low-bg);
+        color: var(--chip-low-fg);
+      }
+      .btn {
+        border: none;
+        border-radius: var(--radius-pill);
+        background: var(--btn-grad);
+        color: var(--btn-fg);
+        font-weight: 700;
+        font-size: 14px;
+        padding: 10px 20px;
+        box-shadow: var(--shadow);
+        transition:
+          transform 0.15s ease,
+          filter 0.15s ease;
+      }
+      .btn:hover {
+        filter: brightness(1.05);
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
+      .btn[disabled] {
+        opacity: 0.6;
+        cursor: wait;
+      }
+      .btn.ghost {
+        background: var(--surface);
+        color: var(--text);
+        border: 1.5px solid var(--edge-strong);
+      }
+
+      .banner {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        background: var(--surface-tint);
+        border: 1.5px solid var(--green);
+        border-radius: var(--radius-card);
+        padding: 16px 20px;
+        margin-bottom: 24px;
+        box-shadow: var(--shadow);
+      }
+      .banner-icon {
+        width: 40px;
+        height: 40px;
+        flex: none;
+        border-radius: 12px;
+        background: var(--btn-grad);
+        color: var(--btn-fg);
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        font-weight: 800;
+      }
+      .banner b {
+        font-size: 16.5px;
+      }
+      .banner .sub {
+        color: var(--text-2);
+        font-size: 13.5px;
+      }
+      .data-badge {
+        margin-left: auto;
+        flex: none;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-3);
+        border: 1px solid var(--edge-strong);
+        border-radius: var(--radius-pill);
+        padding: 4px 11px;
+      }
+
+      .term {
+        background: #16181d;
+        border: 1px solid #262a31;
+        border-radius: 12px;
+        box-shadow: var(--term-shadow);
+        overflow: hidden;
+        margin-bottom: 26px;
+      }
+      .term-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 14px;
+        background: #1e2127;
+        border-bottom: 1px solid #262a31;
+      }
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+      }
+      .dot.r {
+        background: #ff5f57;
+      }
+      .dot.y {
+        background: #febc2e;
+      }
+      .dot.g {
+        background: #28c840;
+      }
+      .term-title {
+        flex: 1;
+        text-align: center;
+        margin-right: 52px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: #4d525b;
+      }
+      .term pre {
+        margin: 0;
+        padding: 18px 20px;
+        max-height: 400px;
+        overflow: auto;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        line-height: 1.62;
+        color: #d6d9de;
+      }
+      .term .b {
+        font-weight: 700;
+      }
+      .term .d {
+        color: #7a808a;
+      }
+      .term .red {
+        color: #e06c75;
+      }
+      .term .green {
+        color: #98c379;
+      }
+      .term .yellow {
+        color: #e5c07b;
+      }
+      .term .cyan {
+        color: #61c3cf;
+      }
+      .term .prompt {
+        color: #98c379;
+        font-weight: 700;
+      }
+
+      h2 {
+        font-size: 17px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        margin: 0 0 14px;
+      }
+      .cols {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      @media (max-width: 920px) {
+        .cols {
+          grid-template-columns: 1fr;
+        }
+      }
+      .col {
+        background: var(--surface);
+        border: 1px solid var(--edge);
+        border-radius: var(--radius-card);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .col-head {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 16px;
+        background: none;
+        border: none;
+        font-size: 14.5px;
+        font-weight: 800;
+        color: var(--text);
+        text-align: left;
+      }
+      .col-head .count {
+        font-size: 12px;
+        padding: 3px 10px;
+        border-radius: var(--radius-pill);
+      }
+      .col.high .count {
+        background: var(--chip-high-bg);
+        color: var(--chip-high-fg);
+      }
+      .col.med .count {
+        background: var(--chip-med-bg);
+        color: var(--chip-med-fg);
+      }
+      .col.low .count {
+        background: var(--chip-low-bg);
+        color: var(--chip-low-fg);
+      }
+      .col-head .sev-note {
+        color: var(--text-3);
+        font-weight: 600;
+        font-size: 12px;
+      }
+      .col-head .chev {
+        margin-left: auto;
+        color: var(--text-3);
+        transition: transform 0.2s ease;
+      }
+      .col.collapsed .chev {
+        transform: rotate(-90deg);
+      }
+      .col-body {
+        max-height: 560px;
+        overflow-y: auto;
+        padding: 4px 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .col.collapsed .col-body {
+        display: none;
+      }
+
+      .finding {
+        border: 1px solid var(--edge);
+        border-radius: 14px;
+        padding: 12px 14px 12px 16px;
+        position: relative;
+        background: var(--surface);
+      }
+      .finding::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 10px;
+        bottom: 10px;
+        width: 4px;
+        border-radius: 4px;
+      }
+      .col.high .finding::before {
+        background: var(--chip-high-fg);
+      }
+      .col.med .finding::before {
+        background: var(--chip-med-fg);
+      }
+      .col.low .finding::before {
+        background: var(--chip-low-fg);
+      }
+      .finding .where {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--text-3);
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        flex-wrap: wrap;
+      }
+      .file-link {
+        background: none;
+        border: none;
+        padding: 0;
+        font: inherit;
+        color: inherit;
+        text-align: left;
+        display: inline-flex;
+        gap: 8px;
+        align-items: baseline;
+        border-radius: 4px;
+      }
+      .file-link b {
+        color: var(--text);
+        font-weight: 700;
+      }
+      .file-link:hover b {
+        color: var(--green-deep);
+        text-decoration: underline;
+      }
+      .file-link .pos {
+        color: var(--text-3);
+      }
+      .finding .rule {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: var(--radius-pill);
+        background: var(--surface-tint);
+        color: var(--text-2);
+        border: 1px solid var(--edge);
+        margin: 8px 0 6px;
+      }
+      .finding .msg {
+        font-size: 13px;
+        color: var(--text);
+        margin: 0 0 6px;
+      }
+      .finding .fix {
+        font-size: 12.5px;
+        color: var(--text-2);
+        margin: 0;
+      }
+      .finding .fix::before {
+        content: "→ ";
+        color: var(--green-deep);
+        font-weight: 700;
+      }
+      .empty {
+        text-align: center;
+        color: var(--text-3);
+        font-size: 13px;
+        padding: 26px 12px;
+      }
+      .empty .big {
+        font-size: 26px;
+        display: block;
+        margin-bottom: 6px;
+        color: var(--green);
+      }
+
+      dialog {
+        border: 1px solid var(--edge-strong);
+        border-radius: var(--radius-card);
+        background: var(--surface);
+        color: var(--text);
+        padding: 26px 28px;
+        width: min(400px, 92vw);
+        box-shadow: var(--shadow);
+      }
+      dialog::backdrop {
+        background: rgba(10, 14, 6, 0.55);
+        backdrop-filter: blur(3px);
+      }
+      dialog h3 {
+        margin: 0 0 4px;
+        font-size: 17px;
+        font-weight: 800;
+      }
+      dialog .sub {
+        color: var(--text-3);
+        font-size: 13px;
+        margin: 0 0 18px;
+      }
+      .seg {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        background: var(--surface-tint);
+        border: 1px solid var(--edge);
+        border-radius: var(--radius-pill);
+        padding: 4px;
+        gap: 4px;
+      }
+      .seg button {
+        border: none;
+        border-radius: var(--radius-pill);
+        background: transparent;
+        color: var(--text-2);
+        font-weight: 700;
+        font-size: 13.5px;
+        padding: 9px 0;
+      }
+      .seg button[aria-pressed="true"] {
+        background: var(--btn-grad);
+        color: var(--btn-fg);
+        box-shadow: var(--shadow);
+      }
+      .coming {
+        margin-top: 18px;
+        font-size: 12.5px;
+        color: var(--text-3);
+      }
+      .dialog-foot {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 20px;
+      }
+
+      footer {
+        margin-top: 52px;
+        padding-top: 20px;
+        border-top: 1px solid var(--edge);
+        color: var(--text-3);
+        font-size: 12.5px;
+      }
+      footer code {
+        font-family: var(--mono);
+      }
+
+      @media (max-width: 640px) {
+        .wrap {
+          padding: 16px 14px 56px;
+        }
+        .banner {
+          flex-wrap: wrap;
+        }
+        .data-badge {
+          margin-left: 0;
+          order: 3;
+        }
+        .term pre {
+          font-size: 11.5px;
+          max-height: 320px;
+        }
+        .col-body {
+          max-height: 440px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="logo">
+          <span class="logo-badge">▲</span>
+          <span
+            >statelint
+            <div class="header-sub">React state architecture linter</div></span
+          >
+        </div>
+        <div class="spacer"></div>
+        <div class="chips" id="chips"></div>
+        <button class="btn" id="rescan-btn">⟳ Rescan</button>
+        <button class="btn ghost" id="open-settings" aria-haspopup="dialog">
+          ⚙ Settings
+        </button>
+      </header>
+
+      <div class="banner" role="status">
+        <div class="banner-icon">▲</div>
+        <div>
+          <b id="banner-title"></b>
+          <div class="sub" id="banner-sub"></div>
+        </div>
+        <span class="data-badge" id="data-badge">live</span>
+      </div>
+
+      <div class="term">
+        <div class="term-bar">
+          <span class="dot r"></span><span class="dot y"></span
+          ><span class="dot g"></span>
+          <span class="term-title" id="term-title"></span>
+        </div>
+        <pre tabindex="0" aria-label="Raw terminal output" id="term-pre"></pre>
+      </div>
+
+      <h2>Findings by severity</h2>
+      <div class="cols" id="cols"></div>
+
+      <footer>
+        Served locally by <code>statelint --ui</code> — Rescan re-runs the
+        analysis in-process. Nothing leaves your machine. Click any file to open
+        it in VS Code at the exact line.
+      </footer>
+    </div>
+
+    <dialog id="settings" aria-label="Settings">
+      <h3>Settings</h3>
+      <p class="sub">Appearance</p>
+      <div class="seg" role="group" aria-label="Theme">
+        <button data-theme-pick="light">Light</button>
+        <button data-theme-pick="system">System</button>
+        <button data-theme-pick="dark">Dark</button>
+      </div>
+      <p class="coming">
+        More settings — rule toggles, thresholds, editor scheme — coming soon.
+      </p>
+      <div class="dialog-foot">
+        <button class="btn" id="close-settings">Done</button>
+      </div>
+    </dialog>
+
+    <script>
+      let FINDINGS = __FINDINGS__;
+      let META = __META__; // { root, repo, fileCount, durationMs, command }
+      let TERM_HTML = __TERM__;
+
+      // ── Theme ──
+      const root = document.documentElement;
+      const media = window.matchMedia("(prefers-color-scheme: dark)");
+      const getPref = () => localStorage.getItem("statelint-theme") || "system";
+      function applyTheme() {
+        const pref = getPref();
+        root.dataset.theme =
+          pref === "system" ? (media.matches ? "dark" : "light") : pref;
+        document
+          .querySelectorAll("[data-theme-pick]")
+          .forEach((b) =>
+            b.setAttribute(
+              "aria-pressed",
+              String(b.dataset.themePick === pref),
+            ),
+          );
+      }
+      media.addEventListener("change", applyTheme);
+      document.querySelectorAll("[data-theme-pick]").forEach((b) =>
+        b.addEventListener("click", () => {
+          localStorage.setItem("statelint-theme", b.dataset.themePick);
+          applyTheme();
+        }),
+      );
+      applyTheme();
+
+      const dlg = document.getElementById("settings");
+      document
+        .getElementById("open-settings")
+        .addEventListener("click", () => dlg.showModal());
+      document
+        .getElementById("close-settings")
+        .addEventListener("click", () => dlg.close());
+      dlg.addEventListener("click", (e) => {
+        if (e.target === dlg) dlg.close();
+      });
+
+      // ── Rendering ──
+      const LEVELS = [
+        {
+          key: "high",
+          label: "High",
+          sev: "error",
+          note: "breaks correctness",
+        },
+        {
+          key: "med",
+          label: "Medium",
+          sev: "warn",
+          note: "architecture debt — fails CI",
+        },
+        {
+          key: "low",
+          label: "Low",
+          sev: "info",
+          note: "advisory — never blocks",
+        },
+      ];
+      const esc = (s) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const splitPath = (p) => {
+        const i = p.lastIndexOf("/");
+        return i === -1 ? ["", p] : [p.slice(0, i + 1), p.slice(i + 1)];
+      };
+
+      function render(freshness) {
+        const counts = Object.fromEntries(
+          LEVELS.map((l) => [
+            l.key,
+            FINDINGS.filter((f) => f.severity === l.sev).length,
+          ]),
+        );
+        document.getElementById("chips").innerHTML = LEVELS.map(
+          (l) =>
+            `<span class="chip ${l.key}">${counts[l.key]} ${l.label}</span>`,
+        ).join("");
+        document.getElementById("banner-title").textContent =
+          `${FINDINGS.length} state architecture findings detected.`;
+        document.getElementById("banner-sub").textContent =
+          `${META.repo} — ${META.fileCount} files scanned in ${(META.durationMs / 1000).toFixed(1)}s. Review Medium findings before merging.`;
+        document.getElementById("data-badge").textContent = freshness;
+        document.getElementById("term-title").textContent =
+          `${META.repo} — ${META.command} — live`;
+        document.getElementById("term-pre").innerHTML =
+          `<span class="prompt">❯</span> ${esc(META.command)}\n\n${TERM_HTML}`;
+
+        document.getElementById("cols").innerHTML = LEVELS.map((l) => {
+          const items = FINDINGS.filter((f) => f.severity === l.sev);
+          const cards =
+            items.length === 0
+              ? `<div class="empty"><span class="big">✓</span>No ${l.label.toLowerCase()}-severity findings</div>`
+              : items
+                  .map((f) => {
+                    const [dir, base] = splitPath(f.loc.file);
+                    return `<article class="finding">
+              <div class="where">
+                <button class="file-link" data-file="${esc(f.loc.file)}" data-line="${f.loc.line}" data-col="${f.loc.col}"
+                        title="Open in VS Code at line ${f.loc.line}">
+                  <span>${esc(dir)}<b>${esc(base)}</b></span>
+                  <span class="pos">${f.loc.line}:${f.loc.col}</span>
+                </button>
+              </div>
+              <span class="rule">${esc(f.rule)}</span>
+              <p class="msg">${esc(f.message)}</p>
+              <p class="fix">${esc(f.recommendation)}</p>
+            </article>`;
+                  })
+                  .join("");
+          return `<div class="col ${l.key}" id="col-${l.key}">
+        <button class="col-head" aria-expanded="true" aria-controls="body-${l.key}" data-col="${l.key}">
+          ${l.label} <span class="count">${items.length}</span>
+          <span class="sev-note">${l.note}</span>
+          <span class="chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="col-body" id="body-${l.key}">${cards}</div>
+      </div>`;
+        }).join("");
+      }
+      render("live scan");
+
+      document.getElementById("cols").addEventListener("click", (e) => {
+        const link = e.target.closest(".file-link");
+        if (link) {
+          const file = link.dataset.file;
+          const abs = file.startsWith("/") ? file : `${META.root}/${file}`;
+          window.open(
+            `vscode://file/${abs}:${link.dataset.line}:${link.dataset.col}`,
+            "_blank",
+          );
+          return;
+        }
+        const head = e.target.closest(".col-head");
+        if (!head) return;
+        const col = document.getElementById("col-" + head.dataset.col);
+        const collapsed = col.classList.toggle("collapsed");
+        head.setAttribute("aria-expanded", String(!collapsed));
+      });
+
+      // ── Rescan: one click, re-runs the analysis server-side ──
+      const rescanBtn = document.getElementById("rescan-btn");
+      rescanBtn.addEventListener("click", async () => {
+        rescanBtn.disabled = true;
+        rescanBtn.textContent = "⟳ Scanning…";
+        try {
+          const res = await fetch("/api/scan");
+          if (!res.ok) throw new Error(String(res.status));
+          const data = await res.json();
+          FINDINGS = data.findings;
+          META = data.meta;
+          TERM_HTML = data.termHtml;
+          const now = new Date();
+          render(`rescanned ${now.toLocaleTimeString()}`);
+        } catch {
+          document.getElementById("data-badge").textContent =
+            "rescan failed — is the server still running?";
+        } finally {
+          rescanBtn.disabled = false;
+          rescanBtn.textContent = "⟳ Rescan";
+        }
+      });
+    </script>
+  </body>
+</html>
