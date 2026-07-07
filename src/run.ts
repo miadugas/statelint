@@ -7,9 +7,12 @@ import type { SourceFileInput } from "./graph/build.js";
 import { buildStateGraph } from "./graph/build.js";
 import type { BuildOptions } from "./graph/build.js";
 import { detectCookieAsState } from "./detectors/cookie-as-state.js";
+import { detectDefeatedMemo } from "./detectors/defeated-memo.js";
+import { detectDerivedStateAsState } from "./detectors/derived-state.js";
 import { detectMultipleSourcesOfTruth } from "./detectors/multiple-sources.js";
 import { detectOverBroadSelector } from "./detectors/over-broad-selector.js";
 import { detectOverGlobalizedState } from "./detectors/over-globalized.js";
+import { detectPointlessMemo } from "./detectors/pointless-memo.js";
 import { detectPropDrilling } from "./detectors/prop-drilling.js";
 import { detectServerStateInClientState } from "./detectors/server-state.js";
 import { computeStackProfile } from "./detectors/stack.js";
@@ -39,6 +42,9 @@ export function runStatelint(
     ...detectStorageAsState(graph, profile),
     ...detectCookieAsState(graph),
     ...detectUrlStateForked(graph),
+    ...detectDerivedStateAsState(graph),
+    ...detectDefeatedMemo(graph),
+    ...detectPointlessMemo(graph),
     ...detectPropDrilling(graph, {
       minBlindIntermediates: options.minBlindIntermediates,
     }),

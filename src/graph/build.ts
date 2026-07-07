@@ -14,6 +14,7 @@ import type {
   ComponentId,
   ComponentNode,
   Edge,
+  MemoIssue,
   SourceLoc,
   StateClass,
   StateGraph,
@@ -46,6 +47,9 @@ interface PropPass {
   fromFile: string;
   childName: string;
   prop: string;
+  /** Value was an inline object/array/function literal — new ref every render. */
+  inline: boolean;
+  loc: SourceLoc;
 }
 
 /** What a local name refers to when imported: `{ source: './Layout', imported: 'default' }`. */
@@ -1602,44 +1606,145 @@ function reclassifyServerFedState(
 
     let asyncWork = false;
     const fedStateIds = new Set<StateId>();
+    const fedDirect = new Set<StateId>();
+    const fedNested = new Set<StateId>();
     walk(callback.body, (inner) => {
       if (inner.type === "AwaitExpression") asyncWork = true;
       if (inner.type !== "Identifier") return;
       // Any reference counts: setX(...) calls AND point-free .then(setX).
       if (inner.name === "fetch" || inner.name === "axios") asyncWork = true;
       const stateId = setterBindings.get(inner.name);
-      if (stateId) fedStateIds.add(stateId);
+      if (!stateId) return;
+      fedStateIds.add(stateId);
+      // Direct = referenced with the effect callback as the nearest enclosing
+      // function. Anything nested (setInterval ticks, subscription handlers,
+      // callback-API results like Google Places) is event/async-driven —
+      // that's not derivation, even without await/fetch in sight.
+      let nested = false;
+      let cursor: TSESTree.Node | undefined = parents.get(inner);
+      while (cursor && cursor !== callback) {
+        if (
+          cursor.type === "ArrowFunctionExpression" ||
+          cursor.type === "FunctionExpression" ||
+          cursor.type === "FunctionDeclaration"
+        ) {
+          nested = true;
+          break;
+        }
+        cursor = parents.get(cursor);
+      }
+      if (nested) {
+        fedNested.add(stateId);
+        return;
+      }
+      const call = parents.get(inner);
+      if (call?.type === "CallExpression" && call.callee === inner) {
+        // Updater form setX(prev => …) is an accumulator — self-referential
+        // state (counters, toggles) is not a pure function of other state.
+        if (asFunction(call.arguments[0])) {
+          fedNested.add(stateId);
+          return;
+        }
+        fedDirect.add(stateId);
+      }
     });
 
-    if (!asyncWork) return;
     const effectLoc = toLoc(comp.file, node);
-    for (const stateId of fedStateIds) {
+    if (asyncWork) {
+      for (const stateId of fedStateIds) {
+        const source = sources.get(stateId);
+        if (!source) continue;
+        source.classification = "server-cache";
+        // First feeding effect wins as the grouping anchor.
+        source.serverFed ??= { effect: effectLoc, editedOutsideEffect: false };
+      }
+      return;
+    }
+
+    // Sync effect feeding state ONLY at the top level = derived candidate.
+    // A setter that also fires inside any nested callback is event-driven.
+    for (const stateId of fedDirect) {
+      if (fedNested.has(stateId)) continue;
       const source = sources.get(stateId);
-      if (!source) continue;
-      source.classification = "server-cache";
-      // First feeding effect wins as the grouping anchor.
-      source.serverFed ??= { effect: effectLoc, editedOutsideEffect: false };
+      if (!source || source.serverFed) continue;
+      source.derivedSync ??= { effect: effectLoc, editedOutsideEffect: false };
     }
   });
 
   if (effectCallbacks.size === 0) return;
 
-  // Draft detection: a fed setter called OUTSIDE every effect callback means
-  // the user edits this state too (onChange etc.) — prefilled form draft.
+  // Edited-outside detection: a fed setter CALLED outside every effect
+  // callback — or merely REFERENCED outside one (passed as a prop, wrapped in
+  // another function, handed to a hook) — means other logic writes this state
+  // too. That's a prefilled draft for server-fed state and a hard
+  // disqualifier for derived state. (Solstice dogfood: setAppData passed to
+  // providers made 'appData' look derived when it's app-wide mutable state.)
   walk(comp.fn, (node) => {
-    if (node.type !== "CallExpression" || node.callee.type !== "Identifier")
-      return;
-    const stateId = setterBindings.get(node.callee.name);
+    if (node.type !== "Identifier") return;
+    const stateId = setterBindings.get(node.name);
     if (!stateId) return;
     const source = sources.get(stateId);
-    if (!source?.serverFed) return;
+    if (!source?.serverFed && !source?.derivedSync) return;
+    if (isNonValuePosition(node, parents.get(node))) return; // its own binding
 
     let cursor: TSESTree.Node | undefined = node;
     while (cursor && cursor !== comp.fn) {
-      if (effectCallbacks.has(cursor)) return; // inside an effect — not an edit
+      if (effectCallbacks.has(cursor)) return; // inside an effect — the feed itself
       cursor = parents.get(cursor);
     }
-    source.serverFed.editedOutsideEffect = true;
+    if (source.serverFed) source.serverFed.editedOutsideEffect = true;
+    if (source.derivedSync) source.derivedSync.editedOutsideEffect = true;
+  });
+
+  // Finalize: purely-derived state gets the 'derived' classification.
+  for (const stateId of setterBindings.values()) {
+    const source = sources.get(stateId);
+    if (source?.derivedSync && !source.derivedSync.editedOutsideEffect) {
+      source.classification = "derived";
+    }
+  }
+}
+
+/** Inline literals create a new reference every render — the memo defeater. */
+function isInlineRefLiteral(node: TSESTree.Node): boolean {
+  return (
+    node.type === "ObjectExpression" ||
+    node.type === "ArrayExpression" ||
+    node.type === "ArrowFunctionExpression" ||
+    node.type === "FunctionExpression"
+  );
+}
+
+/** Structurally broken useMemo/useCallback: provable at the AST, no runtime needed. */
+function scanMemoIssues(
+  fn: FunctionLike,
+  ownerId: string,
+  file: string,
+  out: MemoIssue[],
+): void {
+  walk(fn, (node) => {
+    if (node.type !== "CallExpression" || node.callee.type !== "Identifier")
+      return;
+    const kind = node.callee.name;
+    if (kind !== "useMemo" && kind !== "useCallback") return;
+
+    if (node.arguments.length < 2) {
+      out.push({ kind, issue: "no-deps", ownerId, loc: toLoc(file, node) });
+      return;
+    }
+    const deps = node.arguments[1];
+    if (deps?.type !== "ArrayExpression") return; // spread/identifier deps — can't judge
+    for (const dep of deps.elements) {
+      if (dep && isInlineRefLiteral(dep)) {
+        out.push({
+          kind,
+          issue: "unstable-dep",
+          ownerId,
+          loc: toLoc(file, dep),
+        });
+        return;
+      }
+    }
   });
 }
 
@@ -1658,6 +1763,8 @@ function collectPropPasses(comp: ComponentInfo, propPasses: PropPass[]): void {
         fromFile: comp.file,
         childName: node.name.name,
         prop: attr.name.name,
+        inline: isInlineRefLiteral(attr.value.expression),
+        loc: toLoc(comp.file, attr),
       });
     }
   });
@@ -1734,12 +1841,14 @@ function createGraph(
   sources: Map<StateId, StateSource>,
   edges: Edge[],
   unresolved: { selectorReads: number },
+  memoIssues: MemoIssue[],
 ): StateGraph {
   return {
     components,
     sources,
     edges,
     unresolved,
+    memoIssues,
     readsOf(id: StateId): Edge[] {
       return edges.filter(
         (e) => (e.type === "reads" || e.type === "consumes") && e.to === id,
@@ -1806,6 +1915,7 @@ export function buildStateGraph(
   const edges: Edge[] = [];
   const propPasses: PropPass[] = [];
   const unresolved = { selectorReads: 0 };
+  const memoIssues: MemoIssue[] = [];
 
   // Register context + store sources. Both classify 'global-client' by
   // definition — they exist to share state across the tree.
@@ -1904,6 +2014,10 @@ export function buildStateGraph(
         endpointIdsByName,
         unresolved,
       );
+      scanMemoIssues(comp.fn, comp.id, comp.file, memoIssues);
+    }
+    for (const hook of record.hooks.values()) {
+      scanMemoIssues(hook.fn, hook.id, hook.file, memoIssues);
     }
   }
 
@@ -1968,6 +2082,8 @@ export function buildStateGraph(
       to: child.id,
       prop: pass.prop,
       reads: componentReadsProp(child, pass.prop, parents),
+      inline: pass.inline,
+      loc: pass.loc,
     });
   }
 
@@ -1983,5 +2099,5 @@ export function buildStateGraph(
     }
   }
 
-  return createGraph(componentNodes, sources, edges, unresolved);
+  return createGraph(componentNodes, sources, edges, unresolved, memoIssues);
 }

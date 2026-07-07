@@ -134,7 +134,9 @@ function main(): void {
     );
   }
 
-  process.exit(exitCode(findings));
+  // Never process.exit() after writing: it kills pending async stdout writes
+  // and truncates piped --json output. exitCode lets the stream drain.
+  process.exitCode = exitCode(findings);
 }
 
 main();

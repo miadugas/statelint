@@ -66,6 +66,13 @@ export interface StateSource {
   /** Field count, for monolithic-store detection. */
   fieldCount?: number;
   /** Set when an async effect feeds this source (server-state-in-client-state). */
+  /** Set when a SYNC effect recomputes this state from other state/props —
+   * the derived-state-as-state pattern. Only setter calls executing directly
+   * in the effect body count (setInterval/subscription callbacks don't). */
+  derivedSync?: {
+    effect: SourceLoc;
+    editedOutsideEffect: boolean;
+  };
   serverFed?: {
     /** The useEffect call site — the grouping key for findings. */
     effect: SourceLoc;
@@ -94,13 +101,17 @@ export type Edge =
   | { type: "reads"; from: ComponentId; to: StateId; via: ReadVia }
   /** Component writes the source. */
   | { type: "writes"; from: ComponentId; to: StateId; via: WriteVia }
-  /** Component passes a prop to a child. `reads` = whether the child actually uses it. */
+  /** Component passes a prop to a child. `reads` = whether the child actually
+   * uses it; `inline` = the value was an inline object/array/function literal
+   * (a new reference every render — what defeats React.memo). */
   | {
       type: "passesProp";
       from: ComponentId;
       to: ComponentId;
       prop: string;
       reads: boolean;
+      inline?: boolean;
+      loc?: SourceLoc;
     }
   /** Component mounts a Context/Store provider for the source. */
   | { type: "provides"; from: ComponentId; to: StateId }
@@ -111,10 +122,21 @@ export type Edge =
 
 // ─── The graph ───
 
+/** A structurally broken useMemo/useCallback the builder proved at the AST. */
+export interface MemoIssue {
+  kind: "useMemo" | "useCallback";
+  issue: "no-deps" | "unstable-dep";
+  ownerId: string; // component or hook id
+  loc: SourceLoc;
+}
+
 export interface StateGraph {
   components: Map<ComponentId, ComponentNode>;
   sources: Map<StateId, StateSource>;
   edges: Edge[];
+
+  /** Structurally broken memoization call sites (never "slow", only "broken"). */
+  memoIssues: MemoIssue[];
 
   /**
    * Usage the builder saw but could not attribute — e.g. useSelector with an
