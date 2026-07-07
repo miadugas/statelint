@@ -8,6 +8,7 @@ export { detectOverBroadSelector } from "./detectors/over-broad-selector.js";
 export { detectMultipleSourcesOfTruth } from "./detectors/multiple-sources.js";
 export { detectStorageAsState } from "./detectors/storage-as-state.js";
 export { detectUrlStateForked } from "./detectors/url-fork.js";
+export { detectCookieAsState } from "./detectors/cookie-as-state.js";
 export { computeStackProfile, NEUTRAL_PROFILE } from "./detectors/stack.js";
 export type { StackProfile } from "./detectors/stack.js";
 export type { Finding, Severity } from "./detectors/types.js";

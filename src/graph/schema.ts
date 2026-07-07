@@ -27,7 +27,8 @@ export type StateKind =
   | "tanstack-query"
   | "local-storage"
   | "session-storage"
-  | "url-param";
+  | "url-param"
+  | "cookie";
 
 // ─── Source locations ───
 

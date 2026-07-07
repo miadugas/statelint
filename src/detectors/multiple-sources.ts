@@ -24,6 +24,7 @@ const GLOBAL_KINDS = new Set([
   "local-storage",
   "session-storage",
   "url-param",
+  "cookie",
 ]);
 
 /** Entities too generic to mean anything — matching on these is noise, not signal. */
@@ -84,7 +85,9 @@ function describe(source: StateSource): string {
               ? "sessionStorage key"
               : source.kind === "url-param"
                 ? "URL param"
-                : source.kind; // useState/useReducer read naturally as-is
+                : source.kind === "cookie"
+                  ? "cookie"
+                  : source.kind; // useState/useReducer read naturally as-is
   return `${kindLabel} '${source.name}' (${source.loc.file}:${source.loc.line})`;
 }
 

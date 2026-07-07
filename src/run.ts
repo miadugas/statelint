@@ -6,6 +6,7 @@
 import type { SourceFileInput } from "./graph/build.js";
 import { buildStateGraph } from "./graph/build.js";
 import type { BuildOptions } from "./graph/build.js";
+import { detectCookieAsState } from "./detectors/cookie-as-state.js";
 import { detectMultipleSourcesOfTruth } from "./detectors/multiple-sources.js";
 import { detectOverBroadSelector } from "./detectors/over-broad-selector.js";
 import { detectOverGlobalizedState } from "./detectors/over-globalized.js";
@@ -36,6 +37,7 @@ export function runStatelint(
     ...detectOverGlobalizedState(graph),
     ...detectOverBroadSelector(graph),
     ...detectStorageAsState(graph, profile),
+    ...detectCookieAsState(graph),
     ...detectUrlStateForked(graph),
     ...detectPropDrilling(graph, {
       minBlindIntermediates: options.minBlindIntermediates,

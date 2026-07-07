@@ -633,9 +633,84 @@ function urlReadKeyOf(
   return arg.value;
 }
 
-// ─── Shared-state usage (contexts, queries, storage, URL — direct or through hooks) ───
+// ─── Cookie adapter ───
 
-/** What a function body touches: contexts, query keys, storage keys, URL params, hooks. */
+/** StateId for a cookie — the cookie name is the identity. */
+function cookieStateId(name: string): StateId {
+  return `cookie:${name}`;
+}
+
+interface CookieBindings {
+  /** `const [cookies, setCookie] = useCookies([...])` — reactive (context-backed). */
+  jarNames: Set<string>;
+  setterNames: Set<string>;
+  removerNames: Set<string>;
+  /** Default-import name for js-cookie (`import Cookies from 'js-cookie'`) — NOT reactive. */
+  jsCookieName: string | null;
+}
+
+/** Pre-pass: react-cookie bindings (declared keys count as reads) + js-cookie import. */
+function collectCookieBindings(
+  fn: FunctionLike,
+  from: FileRecord,
+  use: SharedUse,
+  cookieLocs: Map<StateId, SourceLoc>,
+): CookieBindings {
+  const bindings: CookieBindings = {
+    jarNames: new Set(),
+    setterNames: new Set(),
+    removerNames: new Set(),
+    jsCookieName: null,
+  };
+  for (const [local, ref] of from.imports) {
+    if (ref.source === "js-cookie" && ref.imported === "default")
+      bindings.jsCookieName = local;
+  }
+
+  walk(fn, (node) => {
+    if (node.type !== "VariableDeclarator") return;
+    if (node.init?.type !== "CallExpression") return;
+    const callee = node.init.callee;
+    if (callee.type !== "Identifier" || callee.name !== "useCookies") return;
+    if (!importedFromAny(from, "useCookies", ["react-cookie"])) return;
+
+    if (node.id.type === "ArrayPattern") {
+      const [jar, setter, remover] = node.id.elements;
+      if (jar?.type === "Identifier") bindings.jarNames.add(jar.name);
+      if (setter?.type === "Identifier") bindings.setterNames.add(setter.name);
+      if (remover?.type === "Identifier")
+        bindings.removerNames.add(remover.name);
+    }
+    // useCookies(['token']) — the dependency list is a subscription: a read.
+    const arg = node.init.arguments[0];
+    if (arg?.type === "ArrayExpression") {
+      for (const el of arg.elements) {
+        if (el?.type === "Literal" && typeof el.value === "string") {
+          const id = cookieStateId(el.value);
+          use.cookieReadsReactive.add(id);
+          if (!cookieLocs.has(id)) cookieLocs.set(id, toLoc(from.path, node));
+        }
+      }
+    }
+  });
+  return bindings;
+}
+
+/** `document.cookie = "theme=dark; path=/"` → 'theme'. Dynamic strings are skipped. */
+function cookieNameFromAssignment(right: TSESTree.Node): string | null {
+  let text: string | null = null;
+  if (right.type === "Literal" && typeof right.value === "string")
+    text = right.value;
+  else if (right.type === "TemplateLiteral" && right.quasis[0])
+    text = right.quasis[0].value.cooked ?? null;
+  if (!text) return null;
+  const match = /^([^=;\s]+)=/.exec(text);
+  return match?.[1] ?? null;
+}
+
+// ─── Shared-state usage (contexts, queries, storage, URL, cookies — direct or through hooks) ───
+
+/** What a function body touches: contexts, query keys, storage keys, URL params, cookies, hooks. */
 interface SharedUse {
   ctxIds: Set<StateId>;
   queryKeys: Set<string>;
@@ -645,6 +720,12 @@ interface SharedUse {
   urlWrites: Set<StateId>;
   /** useState vars initialized FROM a url read: the fork pattern. */
   urlForks: Array<{ stateName: string; urlId: StateId }>;
+  /** Reactive access (react-cookie) vs raw (js-cookie / document.cookie) — the
+   * distinction matters: raw writes never notify reactive readers. */
+  cookieReadsReactive: Set<StateId>;
+  cookieReadsRaw: Set<StateId>;
+  cookieWritesReactive: Set<StateId>;
+  cookieWritesRaw: Set<StateId>;
   hookIds: Set<string>;
 }
 
@@ -655,6 +736,7 @@ function scanSharedUse(
   queryLocs: Map<string, SourceLoc>,
   storageLocs: Map<StateId, SourceLoc>,
   urlLocs: Map<StateId, SourceLoc>,
+  cookieLocs: Map<StateId, SourceLoc>,
 ): SharedUse {
   const use: SharedUse = {
     ctxIds: new Set(),
@@ -664,9 +746,24 @@ function scanSharedUse(
     urlReads: new Set(),
     urlWrites: new Set(),
     urlForks: [],
+    cookieReadsReactive: new Set(),
+    cookieReadsRaw: new Set(),
+    cookieWritesReactive: new Set(),
+    cookieWritesRaw: new Set(),
     hookIds: new Set(),
   };
   const urlBindings = collectUrlBindings(fn, from, use, urlLocs);
+  const cookieBindings = collectCookieBindings(fn, from, use, cookieLocs);
+
+  const markCookie = (
+    name: string,
+    bucket: Set<StateId>,
+    node: TSESTree.Node,
+  ) => {
+    const id = cookieStateId(name);
+    bucket.add(id);
+    if (!cookieLocs.has(id)) cookieLocs.set(id, toLoc(from.path, node));
+  };
 
   const markUrlRead = (key: string, node: TSESTree.Node) => {
     const id = urlStateId(key);
@@ -697,6 +794,32 @@ function scanSharedUse(
       return;
     }
 
+    // document.cookie = "theme=dark; path=/" — raw, non-reactive write
+    if (
+      node.type === "AssignmentExpression" &&
+      node.left.type === "MemberExpression" &&
+      node.left.object.type === "Identifier" &&
+      node.left.object.name === "document" &&
+      node.left.property.type === "Identifier" &&
+      node.left.property.name === "cookie"
+    ) {
+      const name = cookieNameFromAssignment(node.right);
+      if (name) markCookie(name, use.cookieWritesRaw, node);
+      return;
+    }
+
+    // cookies.token on a react-cookie jar — reactive read
+    if (
+      node.type === "MemberExpression" &&
+      node.object.type === "Identifier" &&
+      cookieBindings.jarNames.has(node.object.name) &&
+      node.property.type === "Identifier" &&
+      !node.computed
+    ) {
+      markCookie(node.property.name, use.cookieReadsReactive, node);
+      return;
+    }
+
     if (node.type !== "CallExpression") return;
 
     const storage = storageAccessOf(node);
@@ -708,6 +831,29 @@ function scanSharedUse(
       return;
     }
 
+    // Cookies.get('token') / Cookies.set('token', v) — js-cookie, non-reactive
+    if (
+      node.callee.type === "MemberExpression" &&
+      node.callee.object.type === "Identifier" &&
+      node.callee.object.name === cookieBindings.jsCookieName &&
+      node.callee.property.type === "Identifier"
+    ) {
+      const method = node.callee.property.name;
+      const arg = node.arguments[0];
+      if (
+        (method === "get" || method === "set" || method === "remove") &&
+        arg?.type === "Literal" &&
+        typeof arg.value === "string"
+      ) {
+        markCookie(
+          arg.value,
+          method === "get" ? use.cookieReadsRaw : use.cookieWritesRaw,
+          node,
+        );
+        return;
+      }
+    }
+
     // sp.get('tab') on a searchParams binding
     const urlKey = urlReadKeyOf(node, urlBindings);
     if (urlKey) {
@@ -717,6 +863,18 @@ function scanSharedUse(
 
     if (node.callee.type !== "Identifier") return;
     const calleeName = node.callee.name;
+
+    // setCookie('token', v) / removeCookie('token') — react-cookie, reactive
+    if (
+      cookieBindings.setterNames.has(calleeName) ||
+      cookieBindings.removerNames.has(calleeName)
+    ) {
+      const arg = node.arguments[0];
+      if (arg?.type === "Literal" && typeof arg.value === "string") {
+        markCookie(arg.value, use.cookieWritesReactive, node);
+      }
+      return;
+    }
 
     // setSearchParams({ page: … }) — object-literal keys are writes
     if (urlBindings.setters.has(calleeName)) {
@@ -778,6 +936,7 @@ function computeHookSharedUse(
   queryLocs: Map<string, SourceLoc>,
   storageLocs: Map<StateId, SourceLoc>,
   urlLocs: Map<StateId, SourceLoc>,
+  cookieLocs: Map<StateId, SourceLoc>,
 ): Map<string, SharedUse> {
   const uses = new Map<string, SharedUse>();
   for (const record of records.values()) {
@@ -791,6 +950,7 @@ function computeHookSharedUse(
           queryLocs,
           storageLocs,
           urlLocs,
+          cookieLocs,
         ),
       );
     }
@@ -820,6 +980,12 @@ function computeHookSharedUse(
         if (spread(callee.storageWrites, use.storageWrites)) changed = true;
         if (spread(callee.urlReads, use.urlReads)) changed = true;
         if (spread(callee.urlWrites, use.urlWrites)) changed = true;
+        if (spread(callee.cookieReadsReactive, use.cookieReadsReactive))
+          changed = true;
+        if (spread(callee.cookieReadsRaw, use.cookieReadsRaw)) changed = true;
+        if (spread(callee.cookieWritesReactive, use.cookieWritesReactive))
+          changed = true;
+        if (spread(callee.cookieWritesRaw, use.cookieWritesRaw)) changed = true;
       }
     }
   }
@@ -835,6 +1001,7 @@ function analyzeSharedStateUsage(
   queryLocs: Map<string, SourceLoc>,
   storageLocs: Map<StateId, SourceLoc>,
   urlLocs: Map<StateId, SourceLoc>,
+  cookieLocs: Map<StateId, SourceLoc>,
   edges: Edge[],
 ): void {
   const seen = new Set<string>();
@@ -851,6 +1018,7 @@ function analyzeSharedStateUsage(
     queryLocs,
     storageLocs,
     urlLocs,
+    cookieLocs,
   );
   for (const hookId of use.hookIds) {
     const consumed = hookUse.get(hookId);
@@ -861,6 +1029,12 @@ function analyzeSharedStateUsage(
     for (const id of consumed.storageWrites) use.storageWrites.add(id);
     for (const id of consumed.urlReads) use.urlReads.add(id);
     for (const id of consumed.urlWrites) use.urlWrites.add(id);
+    for (const id of consumed.cookieReadsReactive)
+      use.cookieReadsReactive.add(id);
+    for (const id of consumed.cookieReadsRaw) use.cookieReadsRaw.add(id);
+    for (const id of consumed.cookieWritesReactive)
+      use.cookieWritesReactive.add(id);
+    for (const id of consumed.cookieWritesRaw) use.cookieWritesRaw.add(id);
   }
   for (const ctxId of use.ctxIds) {
     push(
@@ -891,6 +1065,32 @@ function analyzeSharedStateUsage(
     push(
       { type: "writes", from: comp.id, to: id, via: "mutate" },
       `writes|${id}`,
+    );
+  }
+  // Cookie edges carry the reactivity distinction in `via`: context/setter =
+  // react-cookie (reactive), hook/mutate = js-cookie or document.cookie (raw).
+  for (const id of use.cookieReadsReactive) {
+    push(
+      { type: "reads", from: comp.id, to: id, via: "context" },
+      `reads|${id}|context`,
+    );
+  }
+  for (const id of use.cookieReadsRaw) {
+    push(
+      { type: "reads", from: comp.id, to: id, via: "hook" },
+      `reads|${id}|hook`,
+    );
+  }
+  for (const id of use.cookieWritesReactive) {
+    push(
+      { type: "writes", from: comp.id, to: id, via: "setter" },
+      `writes|${id}|setter`,
+    );
+  }
+  for (const id of use.cookieWritesRaw) {
+    push(
+      { type: "writes", from: comp.id, to: id, via: "mutate" },
+      `writes|${id}|mutate`,
     );
   }
   // The fork pattern becomes a derivesFrom edge: useState var ← url param.
@@ -1672,11 +1872,13 @@ export function buildStateGraph(
   const queryLocs = new Map<string, SourceLoc>();
   const storageLocs = new Map<StateId, SourceLoc>();
   const urlLocs = new Map<StateId, SourceLoc>();
+  const cookieLocs = new Map<StateId, SourceLoc>();
   const hookUse = computeHookSharedUse(
     records,
     queryLocs,
     storageLocs,
     urlLocs,
+    cookieLocs,
   );
 
   for (const record of records.values()) {
@@ -1690,6 +1892,7 @@ export function buildStateGraph(
         queryLocs,
         storageLocs,
         urlLocs,
+        cookieLocs,
         edges,
       );
       analyzeStoreUsage(comp, record, records, edges);
@@ -1737,6 +1940,18 @@ export function buildStateGraph(
       kind: "url-param",
       classification: "global-client",
       name: stateId.slice("url:".length),
+      loc,
+    });
+  }
+
+  // Register cookie sources — identity is the cookie name; global and
+  // persistent like storage, shared with the server.
+  for (const [stateId, loc] of cookieLocs) {
+    sources.set(stateId, {
+      id: stateId,
+      kind: "cookie",
+      classification: "global-client",
+      name: stateId.slice("cookie:".length),
       loc,
     });
   }
