@@ -566,6 +566,100 @@
           scroll-behavior: auto !important;
         }
       }
+
+      /* ── Instructions ── */
+      section.docs {
+        margin-top: 44px;
+      }
+      .docs-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+        gap: 16px;
+      }
+      .doc-card {
+        background: var(--surface);
+        border: 1px solid var(--edge);
+        border-radius: var(--radius-card);
+        box-shadow: var(--shadow);
+        padding: 20px 22px;
+      }
+      .doc-card h3 {
+        margin: 0 0 10px;
+        font-size: 15px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .doc-card .num {
+        width: 24px;
+        height: 24px;
+        flex: none;
+        border-radius: 8px;
+        background: var(--btn-grad);
+        color: var(--btn-fg);
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .doc-card p {
+        font-size: 13.5px;
+        color: var(--text-2);
+        margin: 0 0 10px;
+      }
+      .doc-card code {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text);
+      }
+      .cmd {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #16181d;
+        border-radius: 10px;
+        padding: 9px 12px;
+        margin: 8px 0;
+      }
+      .cmd code {
+        flex: 1;
+        color: #d6d9de;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+      .cmd .copy {
+        border: none;
+        background: #262a31;
+        color: #a9b49a;
+        border-radius: 7px;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 9px;
+      }
+      .cmd .copy:hover {
+        background: #334025;
+        color: #cde4b0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        table-layout: fixed;
+      }
+      td {
+        padding: 7px 8px;
+        border-top: 1px solid var(--edge);
+        color: var(--text-2);
+        vertical-align: top;
+        overflow-wrap: break-word;
+      }
+      td:first-child {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text);
+        width: 42%;
+      }
     </style>
   </head>
   <body>
@@ -606,6 +700,197 @@
 
       <h2>Findings by severity</h2>
       <div class="cols" id="cols"></div>
+
+      <section class="docs">
+        <h2>How to use statelint</h2>
+        <div class="docs-grid">
+          <div class="doc-card">
+            <h3><span class="num">1</span>This console</h3>
+            <p>You're looking at it — served locally from your repo:</p>
+            <div class="cmd">
+              <code>statelint --ui src/</code><button class="copy">Copy</button>
+            </div>
+            <p>
+              Edit code, then hit <b>⟳ Rescan</b> — the analysis re-runs
+              in-process (~1s on a mid-size app) and every panel updates. No
+              file juggling, no re-running the CLI. Add <code>--port N</code> to
+              change the port (default 8734).
+            </p>
+          </div>
+
+          <div class="doc-card">
+            <h3><span class="num">2</span>Read a finding</h3>
+            <table>
+              <tr>
+                <td>file line:col</td>
+                <td>
+                  click it — opens the file in VS Code scrolled to the exact
+                  line (<code>vscode://</code> deep link)
+                </td>
+              </tr>
+              <tr>
+                <td>severity</td>
+                <td>
+                  High = error · Medium = warn (fails CI) · Low = info
+                  (advisory)
+                </td>
+              </tr>
+              <tr>
+                <td>rule</td>
+                <td>which detector fired</td>
+              </tr>
+              <tr>
+                <td>→ fix</td>
+                <td>
+                  the named refactor — stack-aware: names the tool
+                  <em>your app</em> already uses most
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="doc-card">
+            <h3><span class="num">3</span>What it understands</h3>
+            <p>Ten state surfaces plus memoization, one graph:</p>
+            <table>
+              <tr>
+                <td>client</td>
+                <td>
+                  useState/useReducer · Context · Zustand · Redux/RTK slices
+                </td>
+              </tr>
+              <tr>
+                <td>server cache</td>
+                <td>TanStack Query · RTK Query</td>
+              </tr>
+              <tr>
+                <td>persistence</td>
+                <td>localStorage · sessionStorage · cookies</td>
+              </tr>
+              <tr>
+                <td>address bar</td>
+                <td>URL search params · route params · nuqs</td>
+              </tr>
+              <tr>
+                <td>memoization</td>
+                <td>React.memo · useMemo · useCallback</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="doc-card">
+            <h3><span class="num">4</span>The rules</h3>
+            <table>
+              <tr>
+                <td>multiple-sources-of-truth</td>
+                <td>
+                  one entity owned by 2+ global sources — store vs context vs
+                  storage vs URL vs cookie — or server data cached twice
+                </td>
+              </tr>
+              <tr>
+                <td>server-state-in-client-state</td>
+                <td>
+                  fetch + useState + useEffect hand-rolled cache, grouped per
+                  effect; prefilled form drafts soften to Low
+                </td>
+              </tr>
+              <tr>
+                <td>derived-state-as-state</td>
+                <td>
+                  useState recomputed from other state by a sync effect — should
+                  be a useMemo
+                </td>
+              </tr>
+              <tr>
+                <td>storage-as-state</td>
+                <td>
+                  localStorage/sessionStorage key shared as a non-reactive store
+                </td>
+              </tr>
+              <tr>
+                <td>cookie-as-state</td>
+                <td>
+                  cookie shared via js-cookie/document.cookie across components
+                </td>
+              </tr>
+              <tr>
+                <td>url-state-forked</td>
+                <td>
+                  useState copies of search params that go stale on back/forward
+                </td>
+              </tr>
+              <tr>
+                <td>prop-drilling</td>
+                <td>props through components that never read them</td>
+              </tr>
+              <tr>
+                <td>over-globalized-state</td>
+                <td>global store/context/slice with one real consumer</td>
+              </tr>
+              <tr>
+                <td>over-broad-selector</td>
+                <td>whole-store subscriptions re-rendering on every change</td>
+              </tr>
+              <tr>
+                <td>defeated-memo</td>
+                <td>
+                  React.memo receiving inline props — the memo never holds
+                </td>
+              </tr>
+              <tr>
+                <td>pointless-memo</td>
+                <td>useMemo/useCallback with no deps or inline-literal deps</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="doc-card">
+            <h3><span class="num">5</span>Command line &amp; CI</h3>
+            <p>Same engine, headless — for pre-commit hooks and pipelines:</p>
+            <div class="cmd">
+              <code>statelint src/</code><button class="copy">Copy</button>
+            </div>
+            <table>
+              <tr>
+                <td>--json</td>
+                <td>machine-readable output</td>
+              </tr>
+              <tr>
+                <td>--min-drill N</td>
+                <td>prop-drilling threshold (default 2 blind hops)</td>
+              </tr>
+              <tr>
+                <td>--no-color</td>
+                <td>plain text; also honors <code>NO_COLOR</code> / pipes</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="doc-card">
+            <h3><span class="num">6</span>Exit codes</h3>
+            <table>
+              <tr>
+                <td>exit 0</td>
+                <td>clean, or Low (advisory) findings only</td>
+              </tr>
+              <tr>
+                <td>exit 1</td>
+                <td>Medium/High findings — fails CI on purpose</td>
+              </tr>
+              <tr>
+                <td>exit 2</td>
+                <td>usage error (bad flag, no files found)</td>
+              </tr>
+            </table>
+            <p>
+              Test files (<code>*.test.*</code>, <code>__tests__</code>,
+              stories) are skipped automatically — rules describe the app, not
+              its tests.
+            </p>
+          </div>
+        </div>
+      </section>
 
       <footer>
         Served locally by <code>statelint --ui</code> — Rescan re-runs the
@@ -773,28 +1058,25 @@
         head.setAttribute("aria-expanded", String(!collapsed));
       });
 
-      // ── Rescan: one click, re-runs the analysis server-side ──
+      // ── Rescan: reload the app. The server re-runs the full analysis on
+      // every GET /, so a reload IS a fresh scan — one click, no CLI. ──
       const rescanBtn = document.getElementById("rescan-btn");
-      rescanBtn.addEventListener("click", async () => {
+      rescanBtn.addEventListener("click", () => {
         rescanBtn.disabled = true;
         rescanBtn.textContent = "⟳ Scanning…";
-        try {
-          const res = await fetch("/api/scan");
-          if (!res.ok) throw new Error(String(res.status));
-          const data = await res.json();
-          FINDINGS = data.findings;
-          META = data.meta;
-          TERM_HTML = data.termHtml;
-          const now = new Date();
-          render(`rescanned ${now.toLocaleTimeString()}`);
-        } catch {
-          document.getElementById("data-badge").textContent =
-            "rescan failed — is the server still running?";
-        } finally {
-          rescanBtn.disabled = false;
-          rescanBtn.textContent = "⟳ Rescan";
-        }
+        window.location.reload();
       });
+
+      // ── Copy buttons in the instructions ──
+      document.querySelectorAll(".cmd .copy").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          await navigator.clipboard.writeText(
+            btn.previousElementSibling.textContent,
+          );
+          btn.textContent = "Copied";
+          setTimeout(() => (btn.textContent = "Copy"), 1500);
+        }),
+      );
     </script>
   </body>
 </html>
