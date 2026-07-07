@@ -11,15 +11,19 @@
 
 import type { StateGraph, StateSource } from "../graph/schema.js";
 import type { Finding } from "./types.js";
+import type { StackProfile } from "./stack.js";
+import { NEUTRAL_PROFILE } from "./stack.js";
 
-/** Kinds that hold app-global client state. Storage is global too — the
- * classic dupe is `user` in a store AND in localStorage with hand-rolled sync. */
+/** Kinds that hold app-global client state. Storage and the URL are global
+ * too — the classic dupes are `user` in a store AND localStorage, or a filter
+ * in the address bar AND a store. */
 const GLOBAL_KINDS = new Set([
   "context",
   "zustand",
   "redux-slice",
   "local-storage",
   "session-storage",
+  "url-param",
 ]);
 
 /** Entities too generic to mean anything — matching on these is noise, not signal. */
@@ -78,7 +82,9 @@ function describe(source: StateSource): string {
             ? "localStorage key"
             : source.kind === "session-storage"
               ? "sessionStorage key"
-              : source.kind; // useState/useReducer read naturally as-is
+              : source.kind === "url-param"
+                ? "URL param"
+                : source.kind; // useState/useReducer read naturally as-is
   return `${kindLabel} '${source.name}' (${source.loc.file}:${source.loc.line})`;
 }
 
@@ -94,7 +100,10 @@ function groupByEntity(sources: StateSource[]): Map<string, StateSource[]> {
   return byEntity;
 }
 
-export function detectMultipleSourcesOfTruth(graph: StateGraph): Finding[] {
+export function detectMultipleSourcesOfTruth(
+  graph: StateGraph,
+  profile: StackProfile = NEUTRAL_PROFILE,
+): Finding[] {
   const findings: Finding[] = [];
   const all = [...graph.sources.values()];
 
@@ -130,7 +139,9 @@ export function detectMultipleSourcesOfTruth(graph: StateGraph): Finding[] {
     const sorted = [...group].sort((a, b) =>
       a.loc.file.localeCompare(b.loc.file),
     );
-    const hasQuery = sorted.some((s) => s.kind === "tanstack-query");
+    const hasQuery = sorted.some(
+      (s) => s.kind === "tanstack-query" || s.kind === "rtk-query",
+    );
     findings.push({
       rule: "multiple-sources-of-truth",
       severity: "warn",
@@ -141,7 +152,7 @@ export function detectMultipleSourcesOfTruth(graph: StateGraph): Finding[] {
         )}. Hand-rolled caches drift from each other${hasQuery ? " and from the query cache" : ""}.`,
       recommendation: hasQuery
         ? `Read '${entity}' via the existing query everywhere and delete the manual fetch caches.`
-        : `Cache '${entity}' once in a query library (TanStack Query) and delete the per-component copies.`,
+        : `Cache '${entity}' once in ${profile.serverLib ?? "a query library (TanStack Query)"} and delete the per-component copies.`,
       loc: sorted[0]!.loc,
       path: sorted.map((s) => s.id),
     });

@@ -547,14 +547,104 @@ function storageAccessOf(
   };
 }
 
-// ─── Shared-state usage (contexts, queries, storage — direct or through hooks) ───
+// ─── URL state adapter ───
 
-/** What a function body touches: contexts, query keys, storage keys, and hooks it calls. */
+const SEARCH_PARAM_SOURCES = ["react-router", "next/navigation"];
+const PARAMS_HOOK_SOURCES = ["react-router", "next/navigation"];
+
+/** StateId for a URL param — the param name is the identity (the address bar is global). */
+function urlStateId(key: string): StateId {
+  return `url:${key}`;
+}
+
+function importedFromAny(
+  record: FileRecord,
+  name: string,
+  prefixes: string[],
+): boolean {
+  const source = record.imports.get(name)?.source;
+  return source !== undefined && prefixes.some((p) => source.startsWith(p));
+}
+
+interface UrlBindings {
+  /** Local names bound to the searchParams object (`const [sp, setSp] = useSearchParams()`). */
+  params: Set<string>;
+  /** Local names bound to the setter. */
+  setters: Set<string>;
+}
+
+/** Pre-pass: find searchParams/setter bindings and useParams destructures. */
+function collectUrlBindings(
+  fn: FunctionLike,
+  from: FileRecord,
+  use: SharedUse,
+  urlLocs: Map<StateId, SourceLoc>,
+): UrlBindings {
+  const bindings: UrlBindings = { params: new Set(), setters: new Set() };
+  walk(fn, (node) => {
+    if (node.type !== "VariableDeclarator") return;
+    if (node.init?.type !== "CallExpression") return;
+    const callee = node.init.callee;
+    if (callee.type !== "Identifier") return;
+
+    if (
+      callee.name === "useSearchParams" &&
+      importedFromAny(from, "useSearchParams", SEARCH_PARAM_SOURCES)
+    ) {
+      if (node.id.type === "ArrayPattern") {
+        const [sp, setSp] = node.id.elements;
+        if (sp?.type === "Identifier") bindings.params.add(sp.name);
+        if (setSp?.type === "Identifier") bindings.setters.add(setSp.name);
+      } else if (node.id.type === "Identifier") {
+        bindings.params.add(node.id.name); // Next.js: read-only object
+      }
+      return;
+    }
+
+    if (
+      callee.name === "useParams" &&
+      importedFromAny(from, "useParams", PARAMS_HOOK_SOURCES) &&
+      node.id.type === "ObjectPattern"
+    ) {
+      for (const prop of node.id.properties) {
+        if (prop.type === "Property" && prop.key.type === "Identifier") {
+          const id = urlStateId(prop.key.name);
+          use.urlReads.add(id);
+          if (!urlLocs.has(id)) urlLocs.set(id, toLoc(from.path, node));
+        }
+      }
+    }
+  });
+  return bindings;
+}
+
+/** `sp.get('tab')` on a known searchParams binding → the url key read. */
+function urlReadKeyOf(
+  node: TSESTree.CallExpression,
+  bindings: UrlBindings,
+): string | null {
+  if (node.callee.type !== "MemberExpression") return null;
+  const { object, property } = node.callee;
+  if (object.type !== "Identifier" || !bindings.params.has(object.name))
+    return null;
+  if (property.type !== "Identifier" || property.name !== "get") return null;
+  const arg = node.arguments[0];
+  if (arg?.type !== "Literal" || typeof arg.value !== "string") return null;
+  return arg.value;
+}
+
+// ─── Shared-state usage (contexts, queries, storage, URL — direct or through hooks) ───
+
+/** What a function body touches: contexts, query keys, storage keys, URL params, hooks. */
 interface SharedUse {
   ctxIds: Set<StateId>;
   queryKeys: Set<string>;
   storageReads: Set<StateId>;
   storageWrites: Set<StateId>;
+  urlReads: Set<StateId>;
+  urlWrites: Set<StateId>;
+  /** useState vars initialized FROM a url read: the fork pattern. */
+  urlForks: Array<{ stateName: string; urlId: StateId }>;
   hookIds: Set<string>;
 }
 
@@ -564,15 +654,49 @@ function scanSharedUse(
   records: Map<string, FileRecord>,
   queryLocs: Map<string, SourceLoc>,
   storageLocs: Map<StateId, SourceLoc>,
+  urlLocs: Map<StateId, SourceLoc>,
 ): SharedUse {
   const use: SharedUse = {
     ctxIds: new Set(),
     queryKeys: new Set(),
     storageReads: new Set(),
     storageWrites: new Set(),
+    urlReads: new Set(),
+    urlWrites: new Set(),
+    urlForks: [],
     hookIds: new Set(),
   };
+  const urlBindings = collectUrlBindings(fn, from, use, urlLocs);
+
+  const markUrlRead = (key: string, node: TSESTree.Node) => {
+    const id = urlStateId(key);
+    use.urlReads.add(id);
+    if (!urlLocs.has(id)) urlLocs.set(id, toLoc(from.path, node));
+    return id;
+  };
+
   walk(fn, (node) => {
+    // Fork pattern: const [tab, setTab] = useState(sp.get('tab') ?? …)
+    if (
+      node.type === "VariableDeclarator" &&
+      node.init?.type === "CallExpression" &&
+      node.init.callee.type === "Identifier" &&
+      node.init.callee.name === "useState" &&
+      node.id.type === "ArrayPattern" &&
+      node.id.elements[0]?.type === "Identifier"
+    ) {
+      const stateName = node.id.elements[0].name;
+      const initArg = node.init.arguments[0];
+      if (initArg) {
+        walk(initArg, (inner) => {
+          if (inner.type !== "CallExpression") return;
+          const key = urlReadKeyOf(inner, urlBindings);
+          if (key) use.urlForks.push({ stateName, urlId: urlStateId(key) });
+        });
+      }
+      return;
+    }
+
     if (node.type !== "CallExpression") return;
 
     const storage = storageAccessOf(node);
@@ -584,8 +708,44 @@ function scanSharedUse(
       return;
     }
 
+    // sp.get('tab') on a searchParams binding
+    const urlKey = urlReadKeyOf(node, urlBindings);
+    if (urlKey) {
+      markUrlRead(urlKey, node);
+      return;
+    }
+
     if (node.callee.type !== "Identifier") return;
     const calleeName = node.callee.name;
+
+    // setSearchParams({ page: … }) — object-literal keys are writes
+    if (urlBindings.setters.has(calleeName)) {
+      const arg = node.arguments[0];
+      if (arg?.type === "ObjectExpression") {
+        for (const prop of arg.properties) {
+          if (prop.type === "Property" && prop.key.type === "Identifier") {
+            const id = urlStateId(prop.key.name);
+            use.urlWrites.add(id);
+            if (!urlLocs.has(id)) urlLocs.set(id, toLoc(from.path, node));
+          }
+        }
+      }
+      return;
+    }
+
+    // nuqs: useQueryState('tab') is a read+write binding to url:tab
+    if (
+      calleeName === "useQueryState" &&
+      importedFromAny(from, "useQueryState", ["nuqs"])
+    ) {
+      const arg = node.arguments[0];
+      if (arg?.type === "Literal" && typeof arg.value === "string") {
+        const id = markUrlRead(arg.value, node);
+        use.urlWrites.add(id);
+      }
+      return;
+    }
+
     if (calleeName === "useContext" || calleeName === "use") {
       const arg = node.arguments[0];
       if (arg?.type !== "Identifier") return;
@@ -617,13 +777,21 @@ function computeHookSharedUse(
   records: Map<string, FileRecord>,
   queryLocs: Map<string, SourceLoc>,
   storageLocs: Map<StateId, SourceLoc>,
+  urlLocs: Map<StateId, SourceLoc>,
 ): Map<string, SharedUse> {
   const uses = new Map<string, SharedUse>();
   for (const record of records.values()) {
     for (const hook of record.hooks.values()) {
       uses.set(
         hook.id,
-        scanSharedUse(hook.fn, record, records, queryLocs, storageLocs),
+        scanSharedUse(
+          hook.fn,
+          record,
+          records,
+          queryLocs,
+          storageLocs,
+          urlLocs,
+        ),
       );
     }
   }
@@ -650,6 +818,8 @@ function computeHookSharedUse(
         if (spread(callee.queryKeys, use.queryKeys)) changed = true;
         if (spread(callee.storageReads, use.storageReads)) changed = true;
         if (spread(callee.storageWrites, use.storageWrites)) changed = true;
+        if (spread(callee.urlReads, use.urlReads)) changed = true;
+        if (spread(callee.urlWrites, use.urlWrites)) changed = true;
       }
     }
   }
@@ -664,6 +834,7 @@ function analyzeSharedStateUsage(
   hookUse: Map<string, SharedUse>,
   queryLocs: Map<string, SourceLoc>,
   storageLocs: Map<StateId, SourceLoc>,
+  urlLocs: Map<StateId, SourceLoc>,
   edges: Edge[],
 ): void {
   const seen = new Set<string>();
@@ -673,7 +844,14 @@ function analyzeSharedStateUsage(
     edges.push(edge);
   };
 
-  const use = scanSharedUse(comp.fn, from, records, queryLocs, storageLocs);
+  const use = scanSharedUse(
+    comp.fn,
+    from,
+    records,
+    queryLocs,
+    storageLocs,
+    urlLocs,
+  );
   for (const hookId of use.hookIds) {
     const consumed = hookUse.get(hookId);
     if (!consumed) continue;
@@ -681,6 +859,8 @@ function analyzeSharedStateUsage(
     for (const key of consumed.queryKeys) use.queryKeys.add(key);
     for (const id of consumed.storageReads) use.storageReads.add(id);
     for (const id of consumed.storageWrites) use.storageWrites.add(id);
+    for (const id of consumed.urlReads) use.urlReads.add(id);
+    for (const id of consumed.urlWrites) use.urlWrites.add(id);
   }
   for (const ctxId of use.ctxIds) {
     push(
@@ -702,6 +882,23 @@ function analyzeSharedStateUsage(
     push(
       { type: "writes", from: comp.id, to: id, via: "mutate" },
       `writes|${id}`,
+    );
+  }
+  for (const id of use.urlReads) {
+    push({ type: "reads", from: comp.id, to: id, via: "hook" }, `reads|${id}`);
+  }
+  for (const id of use.urlWrites) {
+    push(
+      { type: "writes", from: comp.id, to: id, via: "mutate" },
+      `writes|${id}`,
+    );
+  }
+  // The fork pattern becomes a derivesFrom edge: useState var ← url param.
+  for (const fork of use.urlForks) {
+    const stateId: StateId = `${comp.file}#${comp.name}.${fork.stateName}`;
+    push(
+      { type: "derivesFrom", from: stateId, to: fork.urlId },
+      `derivesFrom|${stateId}|${fork.urlId}`,
     );
   }
 
@@ -1474,7 +1671,13 @@ export function buildStateGraph(
 
   const queryLocs = new Map<string, SourceLoc>();
   const storageLocs = new Map<StateId, SourceLoc>();
-  const hookUse = computeHookSharedUse(records, queryLocs, storageLocs);
+  const urlLocs = new Map<StateId, SourceLoc>();
+  const hookUse = computeHookSharedUse(
+    records,
+    queryLocs,
+    storageLocs,
+    urlLocs,
+  );
 
   for (const record of records.values()) {
     for (const comp of record.components.values()) {
@@ -1486,6 +1689,7 @@ export function buildStateGraph(
         hookUse,
         queryLocs,
         storageLocs,
+        urlLocs,
         edges,
       );
       analyzeStoreUsage(comp, record, records, edges);
@@ -1522,6 +1726,17 @@ export function buildStateGraph(
       kind: area === "local" ? "local-storage" : "session-storage",
       classification: "global-client",
       name: keyParts.join(":"),
+      loc,
+    });
+  }
+
+  // Register URL param sources — the address bar is global, shareable state.
+  for (const [stateId, loc] of urlLocs) {
+    sources.set(stateId, {
+      id: stateId,
+      kind: "url-param",
+      classification: "global-client",
+      name: stateId.slice("url:".length),
       loc,
     });
   }

@@ -10,8 +10,13 @@
 
 import type { StateGraph } from "../graph/schema.js";
 import type { Finding } from "./types.js";
+import type { StackProfile } from "./stack.js";
+import { NEUTRAL_PROFILE } from "./stack.js";
 
-export function detectStorageAsState(graph: StateGraph): Finding[] {
+export function detectStorageAsState(
+  graph: StateGraph,
+  profile: StackProfile = NEUTRAL_PROFILE,
+): Finding[] {
   const findings: Finding[] = [];
 
   for (const source of graph.sources.values()) {
@@ -41,7 +46,7 @@ export function detectStorageAsState(graph: StateGraph): Finding[] {
       rule: "storage-as-state",
       severity: "warn",
       message: `${label} key '${source.name}' is used as a shared store by ${touchers.size} components (${shown}${more}) — storage isn't reactive, so writes never re-render readers.`,
-      recommendation: `Own '${source.name}' in one reactive store and persist it from there (e.g. zustand persist middleware); components read state, not storage.`,
+      recommendation: `Own '${source.name}' in ${profile.persistHint}; components read state, not storage.`,
       loc: source.loc,
       path: names,
     });

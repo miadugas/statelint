@@ -11,8 +11,13 @@
 
 import type { StateGraph, StateSource } from "../graph/schema.js";
 import type { Finding } from "./types.js";
+import type { StackProfile } from "./stack.js";
+import { NEUTRAL_PROFILE } from "./stack.js";
 
-export function detectServerStateInClientState(graph: StateGraph): Finding[] {
+export function detectServerStateInClientState(
+  graph: StateGraph,
+  profile: StackProfile = NEUTRAL_PROFILE,
+): Finding[] {
   // Group fed sources by the effect that feeds them.
   const byEffect = new Map<string, StateSource[]>();
   for (const source of graph.sources.values()) {
@@ -52,7 +57,11 @@ export function detectServerStateInClientState(graph: StateGraph): Finding[] {
           }.`,
       recommendation: allDrafts
         ? "Fetch with useQuery and seed the draft from its data (or a form library’s defaultValues) — separate the fetching concern from the editing concern."
-        : "Move to TanStack Query (or RTK Query in Redux apps): useQuery replaces the useState + useEffect + fetch triple.",
+        : profile.serverLib === "RTK Query"
+          ? "Move to RTK Query — this app already uses it: an endpoint replaces the useState + useEffect + fetch triple."
+          : profile.serverLib === "TanStack Query"
+            ? "Move to TanStack Query — this app already uses it: useQuery replaces the useState + useEffect + fetch triple."
+            : "Move to a query library — TanStack Query's useQuery replaces the useState + useEffect + fetch triple.",
       loc: first.serverFed?.effect ?? first.loc,
       path: first.ownerComponentId ? [first.ownerComponentId] : undefined,
     });

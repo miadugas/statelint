@@ -11,7 +11,9 @@ import { detectOverBroadSelector } from "./detectors/over-broad-selector.js";
 import { detectOverGlobalizedState } from "./detectors/over-globalized.js";
 import { detectPropDrilling } from "./detectors/prop-drilling.js";
 import { detectServerStateInClientState } from "./detectors/server-state.js";
+import { computeStackProfile } from "./detectors/stack.js";
 import { detectStorageAsState } from "./detectors/storage-as-state.js";
+import { detectUrlStateForked } from "./detectors/url-fork.js";
 import type { Finding } from "./detectors/types.js";
 
 export interface RunOptions {
@@ -26,12 +28,15 @@ export function runStatelint(
   options: RunOptions = {},
 ): Finding[] {
   const graph = buildStateGraph(files, { onParseError: options.onParseError });
+  // Recommendations follow the app's dominant tools, measured once per run.
+  const profile = computeStackProfile(graph);
   const findings = [
-    ...detectMultipleSourcesOfTruth(graph),
-    ...detectServerStateInClientState(graph),
+    ...detectMultipleSourcesOfTruth(graph, profile),
+    ...detectServerStateInClientState(graph, profile),
     ...detectOverGlobalizedState(graph),
     ...detectOverBroadSelector(graph),
-    ...detectStorageAsState(graph),
+    ...detectStorageAsState(graph, profile),
+    ...detectUrlStateForked(graph),
     ...detectPropDrilling(graph, {
       minBlindIntermediates: options.minBlindIntermediates,
     }),
