@@ -1,5 +1,5 @@
 /**
- * statelint --ui — serves the findings console locally and re-runs the
+ * statelinter --ui — serves the findings console locally and re-runs the
  * analysis on demand. Rescan is one click: GET /api/scan re-scans the same
  * paths in-process and returns fresh findings + rendered terminal output.
  * Binds 127.0.0.1 only; nothing leaves the machine.
@@ -13,7 +13,7 @@ import type { SourceFileInput } from "./graph/build.js";
 import type { Finding } from "./detectors/types.js";
 import { discoverFiles } from "./discover.js";
 import { formatFindings } from "./format.js";
-import { runStatelint } from "./run.js";
+import { runStatelinter } from "./run.js";
 
 interface ScanResult {
   findings: Finding[];
@@ -27,7 +27,7 @@ interface ScanResult {
   termHtml: string;
 }
 
-/** Convert statelint's own ANSI output (codes 0/1/2/31/32/33/36) to spans. */
+/** Convert statelinter's own ANSI output (codes 0/1/2/31/32/33/36) to spans. */
 export function ansiToHtml(text: string): string {
   const CLASSES: Record<string, string> = {
     "1": "b",
@@ -62,7 +62,7 @@ export function scan(paths: string[], cwd: string): ScanResult {
   const started = performance.now();
   const files: SourceFileInput[] = [];
   for (const path of paths) discoverFiles(path, files);
-  const findings = runStatelint(files, { onParseError: () => {} });
+  const findings = runStatelinter(files, { onParseError: () => {} });
   const durationMs = performance.now() - started;
 
   const pretty = formatFindings(findings, {
@@ -80,7 +80,7 @@ export function scan(paths: string[], cwd: string): ScanResult {
       repo: basename(cwd),
       fileCount: files.length,
       durationMs: Math.round(durationMs),
-      command: `statelint ${paths.join(" ")}`,
+      command: `statelinter ${paths.join(" ")}`,
     },
     termHtml: ansiToHtml(pretty),
   };

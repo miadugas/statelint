@@ -1,5 +1,5 @@
 /**
- * Terminal formatter — statelint's entire UI.
+ * Terminal formatter — statelinter's entire UI.
  *
  * Design rules: severity is never color alone (glyph + word + color);
  * hierarchy comes from weight (bold basename, dim metadata), not decoration;
@@ -99,7 +99,7 @@ export function formatFindings(
   const width = options.width ?? 100;
   const out: string[] = [];
 
-  // Group by file, preserving the sorted order runStatelint provides.
+  // Group by file, preserving the sorted order runStatelinter provides.
   const byFile = new Map<string, Finding[]>();
   for (const finding of findings) {
     const group = byFile.get(finding.loc.file);

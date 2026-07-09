@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildStateGraph } from "./build.js";
+import { detectOverGlobalizedState } from "../detectors/over-globalized.js";
 import { detectPropDrilling } from "../detectors/prop-drilling.js";
 
 describe("cross-file resolution", () => {
@@ -151,6 +152,55 @@ describe("cross-file resolution", () => {
     expect(edge).toBeDefined();
     if (edge?.type === "passesProp")
       expect(edge.to).toBe("src/widgets/index.tsx#Card");
+  });
+
+  it("resolves .js module imports (CRA-era context consumed through a wrapper hook)", () => {
+    const graph = buildStateGraph([
+      {
+        path: "src/context.js",
+        code: `
+          import React, { createContext, useContext, useState } from 'react';
+          const GlobalContext = createContext();
+          export function AppProvider({ children }) {
+            const [stories, setStories] = useState([]);
+            return (
+              <GlobalContext.Provider value={{ stories, setStories }}>
+                {children}
+              </GlobalContext.Provider>
+            );
+          }
+          export function useGlobalContext() {
+            return useContext(GlobalContext);
+          }
+        `,
+      },
+      {
+        path: "src/Stories.js",
+        code: `
+          import { useGlobalContext } from './context';
+          export function Stories() {
+            const { stories } = useGlobalContext();
+            return <div>{stories.length}</div>;
+          }
+        `,
+      },
+    ]);
+
+    // The hook's useContext read must attribute to the Stories component —
+    // this only works when './context' resolves to context.js.
+    const consumes = graph.edges.find(
+      (e) =>
+        e.type === "consumes" &&
+        e.from === "src/Stories.js#Stories" &&
+        e.to === "src/context.js#GlobalContext",
+    );
+    expect(consumes).toBeDefined();
+
+    // With the consumption visible, the false "never consumed" info must not fire.
+    const findings = detectOverGlobalizedState(graph);
+    expect(
+      findings.filter((f) => f.message.includes("never consumed")),
+    ).toHaveLength(0);
   });
 
   it("ignores package imports without crashing", () => {

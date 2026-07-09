@@ -1,4 +1,4 @@
-# statelint — Positioning Brief
+# statelinter — Positioning Brief
 
 **One-liner:** An architecture linter for React state — across every state tool, on every PR.
 

@@ -1,5 +1,5 @@
 /**
- * The State Graph — statelint's core model.
+ * The State Graph — statelinter's core model.
  *
  * Every static detector is a pure query over this graph, never raw AST
  * spelunking. The graph is built once per analysis run from the source AST,
@@ -28,7 +28,17 @@ export type StateKind =
   | "local-storage"
   | "session-storage"
   | "url-param"
-  | "cookie";
+  | "cookie"
+  // Vue (SFC / script setup)
+  | "ref"
+  | "reactive"
+  | "computed"
+  | "pinia"
+  | "provide-inject"
+  // Vue (Vuex — createStore root + per-module)
+  | "vuex"
+  // Vue (SFC / Options API — data() fields)
+  | "options-data";
 
 // ─── Source locations ───
 
@@ -140,10 +150,16 @@ export interface StateGraph {
 
   /**
    * Usage the builder saw but could not attribute — e.g. useSelector with an
-   * imported named selector. When nonzero, detectors must not make
-   * "exactly N readers" claims over the affected kinds; reads are undercounted.
+   * imported named selector, or a Vue Options-API component we can't model
+   * (unresolvable mixins/extends/unrecognized script shape). When nonzero,
+   * detectors must not make "exactly N readers" claims over the affected
+   * kinds; reads are undercounted.
    */
-  unresolved: { selectorReads: number };
+  unresolved: { selectorReads: number; optionsComponents: number };
+
+  /** Framework signals observed while building — recommendations key on these
+   * so a Nuxt app is pointed at useAsyncData, not a React query library. */
+  frameworkHints: { nuxt: boolean };
 
   /** All edges that read a given source (any `via`). */
   readsOf(id: StateId): Edge[];

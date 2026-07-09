@@ -20,7 +20,7 @@ let server: Server;
 let url: string;
 
 beforeAll(async () => {
-  dir = mkdtempSync(join(tmpdir(), "statelint-serve-"));
+  dir = mkdtempSync(join(tmpdir(), "statelinter-serve-"));
   mkdirSync(join(dir, "src"));
   writeFileSync(join(dir, "src/Users.tsx"), FIXTURE);
   // The server resolves console.html next to its own compiled file; in tests
@@ -35,7 +35,7 @@ afterAll(() => {
 });
 
 describe("ansiToHtml", () => {
-  it("converts statelint's ANSI codes to spans and escapes HTML", () => {
+  it("converts statelinter's ANSI codes to spans and escapes HTML", () => {
     const html = ansiToHtml("\x1b[33m\x1b[1m▲ 1 problem\x1b[0m <script>");
     expect(html).toBe(
       '<span class="yellow"><span class="b">▲ 1 problem</span></span> &lt;script&gt;',
@@ -55,12 +55,12 @@ describe("scan", () => {
   });
 });
 
-describe("statelint --ui server", () => {
+describe("statelinter --ui server", () => {
   it("serves the console page with embedded findings", async () => {
     const res = await fetch(url + "/");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("statelint");
+    expect(html).toContain("statelinter");
     expect(html).toContain("server-state-in-client-state");
     expect(html).not.toContain("__FINDINGS__");
     expect(html).not.toContain("__META__");

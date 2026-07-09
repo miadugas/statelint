@@ -51,6 +51,50 @@ function Avatar({ user }) {
 }
 `;
 
+/** A prop drilled from ALREADY-SHARED state (context) — origin reads it via useContext. */
+const CONTEXT_DRILL = [
+  {
+    path: "theme.tsx",
+    code: `import { createContext } from 'react';
+      export const ThemeContext = createContext('light');`,
+  },
+  {
+    path: "Dashboard.tsx",
+    code: `import { useContext } from 'react';
+      import { ThemeContext } from './theme';
+      import { Row } from './Row';
+      export function Dashboard() {
+        const theme = useContext(ThemeContext);
+        return <Row theme={theme} />;
+      }`,
+  },
+  {
+    path: "Row.tsx",
+    code: `import { Cell } from './Cell';
+      export function Row({ theme }) { return <Cell theme={theme} />; }`,
+  },
+  {
+    path: "Cell.tsx",
+    code: `import { Badge } from './Badge';
+      export function Cell({ theme }) { return <Badge theme={theme} />; }`,
+  },
+  {
+    path: "Badge.tsx",
+    code: `export function Badge({ theme }) { return <span className={theme} />; }`,
+  },
+];
+
+/** Origin holds no tracked state — the prop's class can't be resolved. */
+const UNKNOWN_DRILL = `
+function Widget() {
+  const label = greet();
+  return <A x={label} />;
+}
+function A({ x }) { return <B x={x} />; }
+function B({ x }) { return <C x={x} />; }
+function C({ x }) { return <span>{x}</span>; }
+`;
+
 describe("detectPropDrilling", () => {
   it("fires on a chain with 2+ blind intermediates", () => {
     const graph = buildStateGraph([{ path: "app.tsx", code: DEEP_DRILL }]);
@@ -87,6 +131,46 @@ describe("detectPropDrilling", () => {
     expect(
       detectPropDrilling(graph, { minBlindIntermediates: 1 }),
     ).toHaveLength(0);
+  });
+
+  it("drops to info when the drilled prop is already-shared state", () => {
+    const graph = buildStateGraph(CONTEXT_DRILL);
+    const findings = detectPropDrilling(graph);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.severity).toBe("info");
+  });
+
+  it("keeps warn when the drilled prop is genuinely local state", () => {
+    const graph = buildStateGraph([{ path: "app.tsx", code: DEEP_DRILL }]);
+    expect(detectPropDrilling(graph)[0]!.severity).toBe("warn");
+  });
+
+  it("recommends reading at the leaf when the prop is already-shared", () => {
+    const graph = buildStateGraph(CONTEXT_DRILL);
+    const rec = detectPropDrilling(graph)[0]!.recommendation;
+    expect(rec).toMatch(/read.*directly|at the leaf/i);
+    expect(rec).toContain("Badge"); // the leaf consumer
+    expect(rec).not.toMatch(/move this state to context/i);
+  });
+
+  it("recommends composition when the prop is genuinely local state", () => {
+    const graph = buildStateGraph([{ path: "app.tsx", code: DEEP_DRILL }]);
+    const rec = detectPropDrilling(graph)[0]!.recommendation;
+    expect(rec).toMatch(/child|compos/i);
+  });
+
+  it("gives a conditional rec when the origin class is unknown", () => {
+    const graph = buildStateGraph([{ path: "app.tsx", code: UNKNOWN_DRILL }]);
+    const rec = detectPropDrilling(graph, { minBlindIntermediates: 1 })[0]!
+      .recommendation;
+    expect(rec).toMatch(/if .*shared/i);
+  });
+
+  it("describes intermediates as forwarding, not as failing to read", () => {
+    const graph = buildStateGraph([{ path: "app.tsx", code: DEEP_DRILL }]);
+    const msg = detectPropDrilling(graph)[0]!.message;
+    expect(msg).toMatch(/only forward/i);
+    expect(msg).not.toMatch(/never read it/i);
   });
 
   it("every finding carries a recommendation", () => {

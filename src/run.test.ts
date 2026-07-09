@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { runStatelint } from "./run.js";
+import { runStatelinter } from "./run.js";
 
-describe("runStatelint", () => {
+describe("runStatelinter", () => {
   it("runs all detectors and sorts findings by file then line", () => {
-    const findings = runStatelint([
+    const findings = runStatelinter([
       {
         path: "b-drill.tsx",
         code: `
@@ -45,7 +45,7 @@ describe("runStatelint", () => {
   });
 
   it("returns an empty list for clean code", () => {
-    const findings = runStatelint([
+    const findings = runStatelinter([
       {
         path: "clean.tsx",
         code: `
@@ -61,7 +61,7 @@ describe("runStatelint", () => {
 
   it("skips unparseable files via onParseError instead of throwing", () => {
     const skipped: string[] = [];
-    const findings = runStatelint(
+    const findings = runStatelinter(
       [
         { path: "broken.tsx", code: "function ??? not valid" },
         {
@@ -82,7 +82,7 @@ describe("runStatelint", () => {
 
   it("throws on parse errors when no handler is given", () => {
     expect(() =>
-      runStatelint([{ path: "broken.tsx", code: "function ??? not valid" }]),
+      runStatelinter([{ path: "broken.tsx", code: "function ??? not valid" }]),
     ).toThrow();
   });
 });

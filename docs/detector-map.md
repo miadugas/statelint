@@ -1,4 +1,4 @@
-# statelint — Detector Map
+# statelinter — Detector Map
 
 **Static engine** runs headless in CI + editor (the lane's core). **Runtime layer** is
 React Fiber-hook enrichment that ranks findings by real impact — never detects
@@ -50,5 +50,5 @@ Status: ✅ shipped · 🔜 planned.
 ## The split is the point
 
 Architecture findings (the static detectors) never depend on running the app — which
-is exactly what makes statelint continuous and team-enforceable. Runtime tells you
+is exactly what makes statelinter continuous and team-enforceable. Runtime tells you
 _severity_, static finds _structure_.

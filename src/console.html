@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>statelint — __REPO__</title>
+    <title>statelinter — __REPO__</title>
     <style>
       :root {
         --sans:
@@ -668,7 +668,7 @@
         <div class="logo">
           <span class="logo-badge">▲</span>
           <span
-            >statelint
+            >statelinter
             <div class="header-sub">React state architecture linter</div></span
           >
         </div>
@@ -702,13 +702,13 @@
       <div class="cols" id="cols"></div>
 
       <section class="docs">
-        <h2>How to use statelint</h2>
+        <h2>How to use statelinter</h2>
         <div class="docs-grid">
           <div class="doc-card">
             <h3><span class="num">1</span>This console</h3>
             <p>You're looking at it — served locally from your repo:</p>
             <div class="cmd">
-              <code>statelint --ui src/</code><button class="copy">Copy</button>
+              <code>statelinter --ui src/</code><button class="copy">Copy</button>
             </div>
             <p>
               Edit code, then hit <b>⟳ Rescan</b> — the analysis re-runs
@@ -849,7 +849,7 @@
             <h3><span class="num">5</span>Command line &amp; CI</h3>
             <p>Same engine, headless — for pre-commit hooks and pipelines:</p>
             <div class="cmd">
-              <code>statelint src/</code><button class="copy">Copy</button>
+              <code>statelinter src/</code><button class="copy">Copy</button>
             </div>
             <table>
               <tr>
@@ -893,7 +893,7 @@
       </section>
 
       <footer>
-        Served locally by <code>statelint --ui</code> — Rescan re-runs the
+        Served locally by <code>statelinter --ui</code> — Rescan re-runs the
         analysis in-process. Nothing leaves your machine. Click any file to open
         it in VS Code at the exact line.
       </footer>
@@ -923,7 +923,7 @@
       // ── Theme ──
       const root = document.documentElement;
       const media = window.matchMedia("(prefers-color-scheme: dark)");
-      const getPref = () => localStorage.getItem("statelint-theme") || "system";
+      const getPref = () => localStorage.getItem("statelinter-theme") || "system";
       function applyTheme() {
         const pref = getPref();
         root.dataset.theme =
@@ -940,7 +940,7 @@
       media.addEventListener("change", applyTheme);
       document.querySelectorAll("[data-theme-pick]").forEach((b) =>
         b.addEventListener("click", () => {
-          localStorage.setItem("statelint-theme", b.dataset.themePick);
+          localStorage.setItem("statelinter-theme", b.dataset.themePick);
           applyTheme();
         }),
       );
@@ -1045,8 +1045,10 @@
         if (link) {
           const file = link.dataset.file;
           const abs = file.startsWith("/") ? file : `${META.root}/${file}`;
+          // abs is absolute (leads with "/"), so the scheme is vscode://file
+          // + abs — NOT vscode://file/ + abs, which yields a broken //.
           window.open(
-            `vscode://file/${abs}:${link.dataset.line}:${link.dataset.col}`,
+            `vscode://file${abs}:${link.dataset.line}:${link.dataset.col}`,
             "_blank",
           );
           return;

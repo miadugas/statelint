@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * statelint CLI — `statelint [paths...] [--min-drill N] [--json] [--no-color] [--ui]`
+ * statelinter CLI — `statelinter [paths...] [--min-drill N] [--json] [--no-color] [--ui]`
  * Exit 1 on warnings/errors (the CI gate); advisory info findings exit 0.
  * --ui serves the findings console locally with one-click rescan.
  */
 
+import { existsSync } from "node:fs";
 import type { SourceFileInput } from "./graph/build.js";
 import { discoverFiles } from "./discover.js";
 import { exitCode, formatFindings } from "./format.js";
-import { runStatelint } from "./run.js";
+import { runStatelinter } from "./run.js";
 import { startConsole } from "./serve.js";
 
 interface CliArgs {
@@ -41,14 +42,14 @@ function parseArgs(argv: string[]): CliArgs {
     else if (arg === "--port") {
       const value = Number(argv[++i]);
       if (!Number.isInteger(value) || value < 0 || value > 65535) {
-        console.error("statelint: --port expects a port number");
+        console.error("statelinter: --port expects a port number");
         process.exit(2);
       }
       args.port = value;
     } else if (arg === "--min-drill") {
       const value = Number(argv[++i]);
       if (!Number.isInteger(value) || value < 1) {
-        console.error("statelint: --min-drill expects a positive integer");
+        console.error("statelinter: --min-drill expects a positive integer");
         process.exit(2);
       }
       args.minDrill = value;
@@ -62,7 +63,7 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     console.log(
-      "Usage: statelint [paths...] [options]\n\n" +
+      "Usage: statelinter [paths...] [options]\n\n" +
         "Options:\n" +
         "  --ui            serve the findings console locally (one-click rescan)\n" +
         "  --port N        console port (default 8734)\n" +
@@ -75,9 +76,17 @@ async function main(): Promise<void> {
     return;
   }
 
+  const missing = args.paths.filter((p) => !existsSync(p));
+  if (missing.length > 0) {
+    console.error(
+      `statelinter: path not found: ${missing.join(", ")} (run from your app root, or point at e.g. app/src)`,
+    );
+    process.exit(2);
+  }
+
   if (args.ui) {
     const { url } = await startConsole(args.paths, args.port);
-    console.log(`statelint console → ${url}`);
+    console.log(`statelinter console → ${url}`);
     console.log(
       `  watching: ${args.paths.join(", ")} — hit Rescan in the browser after edits; Ctrl+C to stop`,
     );
@@ -87,18 +96,35 @@ async function main(): Promise<void> {
   const started = performance.now();
   const files: SourceFileInput[] = [];
   for (const path of args.paths) {
-    discoverFiles(path, files);
+    try {
+      discoverFiles(path, files);
+    } catch (error) {
+      const missing =
+        error instanceof Error && "code" in error && error.code === "ENOENT";
+      console.error(
+        missing
+          ? `statelinter: path not found: ${path} (run from your app root, or point at e.g. app/src)`
+          : `statelinter: cannot read ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      process.exit(2);
+    }
   }
   if (files.length === 0) {
-    console.error("statelint: no .tsx/.jsx/.ts files found");
+    console.error(
+      `statelinter: no .tsx/.jsx/.ts/.js/.vue files found under ${args.paths.join(", ")}`,
+    );
     process.exit(2);
   }
 
-  const findings = runStatelint(files, {
+  let optionsComponents = 0;
+  const findings = runStatelinter(files, {
     minBlindIntermediates: args.minDrill,
     onParseError: (path, error) => {
       const reason = error instanceof Error ? error.message : String(error);
-      console.error(`statelint: skipped ${path} (parse error: ${reason})`);
+      console.error(`statelinter: skipped ${path} (parse error: ${reason})`);
+    },
+    onMeta: (meta) => {
+      optionsComponents = meta.optionsComponents;
     },
   });
   const durationMs = performance.now() - started;
@@ -119,6 +145,11 @@ async function main(): Promise<void> {
         durationMs,
       }),
     );
+    if (optionsComponents > 0) {
+      console.error(
+        `statelinter: note — ${optionsComponents} Vue component(s) not fully analyzed (unresolvable mixins/unrecognized script shape); reader-count findings for pinia/provide-inject/vuex are suppressed`,
+      );
+    }
   }
 
   // Never process.exit() after writing: it kills pending async stdout writes

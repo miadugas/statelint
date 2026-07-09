@@ -21,7 +21,13 @@ export function detectServerStateInClientState(
   // Group fed sources by the effect that feeds them.
   const byEffect = new Map<string, StateSource[]>();
   for (const source of graph.sources.values()) {
-    if (source.kind !== "useState" && source.kind !== "useReducer") continue;
+    if (
+      source.kind !== "useState" &&
+      source.kind !== "useReducer" &&
+      source.kind !== "ref" &&
+      source.kind !== "options-data"
+    )
+      continue;
     if (source.classification !== "server-cache") continue;
     const effect = source.serverFed?.effect;
     const key = effect
@@ -40,10 +46,26 @@ export function detectServerStateInClientState(
     const drafts = sorted.filter((s) => s.serverFed?.editedOutsideEffect);
     const allDrafts = drafts.length === sorted.length;
 
+    // Wording keys on the source kind — the only framework evidence we have.
+    const options = first.kind === "options-data";
+    const vue = first.kind === "ref" || options;
+    // options-data reads as `data()`; ref/useState/useReducer read as-is.
+    const kindLabel = options ? "data()" : first.kind;
+    const where = options
+      ? "a lifecycle hook"
+      : vue
+        ? "a lifecycle hook or watcher"
+        : "an effect";
+    const triple = options
+      ? "the data() + lifecycle-hook + fetch triple"
+      : vue
+        ? "the ref + onMounted + fetch triple"
+        : "the useState + useEffect + fetch triple";
+
     const subject =
       sorted.length === 1
-        ? `${names} holds server data (fetched in an effect) but lives in ${first.kind}`
-        : `One effect caches server data in ${sorted.length} ${first.kind} variables (${names})`;
+        ? `${names} holds server data (fetched in ${where}) but lives in ${kindLabel}`
+        : `One ${vue ? "lifecycle hook" : "effect"} caches server data in ${sorted.length} ${kindLabel} variables (${names})`;
 
     findings.push({
       rule: "server-state-in-client-state",
@@ -58,10 +80,12 @@ export function detectServerStateInClientState(
       recommendation: allDrafts
         ? "Fetch with useQuery and seed the draft from its data (or a form library’s defaultValues) — separate the fetching concern from the editing concern."
         : profile.serverLib === "RTK Query"
-          ? "Move to RTK Query — this app already uses it: an endpoint replaces the useState + useEffect + fetch triple."
+          ? `Move to RTK Query — this app already uses it: an endpoint replaces ${triple}.`
           : profile.serverLib === "TanStack Query"
-            ? "Move to TanStack Query — this app already uses it: useQuery replaces the useState + useEffect + fetch triple."
-            : "Move to a query library — TanStack Query's useQuery replaces the useState + useEffect + fetch triple.",
+            ? `Move to TanStack Query — this app already uses it: useQuery replaces ${triple}.`
+            : vue && profile.nuxt
+              ? `Move to Nuxt's useAsyncData/useFetch — data, pending, and error replace ${triple} (or @tanstack/vue-query for richer caching).`
+              : `Move to a query library — TanStack Query's useQuery${vue ? " (@tanstack/vue-query)" : ""} replaces ${triple}.`,
       loc: first.serverFed?.effect ?? first.loc,
       path: first.ownerComponentId ? [first.ownerComponentId] : undefined,
     });

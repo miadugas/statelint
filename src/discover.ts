@@ -15,11 +15,16 @@ const SKIP_DIRS = new Set([
   "coverage",
   ".git",
   ".next",
+  ".nuxt",
+  ".output",
   "__tests__",
   "__mocks__",
 ]);
-const EXTENSIONS = new Set([".tsx", ".jsx", ".ts"]);
-const TEST_FILE = /\.(test|spec)\.[jt]sx?$|\.stories\.[jt]sx?$/;
+// .js is included for CRA-era React codebases (JSX in .js is their default);
+// the parser enables JSX for everything except .ts.
+const EXTENSIONS = new Set([".tsx", ".jsx", ".ts", ".js", ".vue"]);
+const TEST_FILE =
+  /\.(test|spec)\.[jt]sx?$|\.stories\.[jt]sx?$|\.(config|setup)\.[jt]s$/;
 
 export function discoverFiles(root: string, out: SourceFileInput[]): void {
   const stats = statSync(root);

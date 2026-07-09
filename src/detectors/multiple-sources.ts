@@ -21,6 +21,9 @@ const GLOBAL_KINDS = new Set([
   "context",
   "zustand",
   "redux-slice",
+  "pinia",
+  "vuex",
+  "provide-inject",
   "local-storage",
   "session-storage",
   "url-param",
@@ -75,19 +78,26 @@ function describe(source: StateSource): string {
   const kindLabel =
     source.kind === "context"
       ? "context"
-      : source.kind === "zustand" || source.kind === "redux-slice"
+      : source.kind === "zustand" ||
+          source.kind === "redux-slice" ||
+          source.kind === "pinia" ||
+          source.kind === "vuex"
         ? `${source.kind} store`
-        : source.kind === "tanstack-query" || source.kind === "rtk-query"
-          ? "query"
-          : source.kind === "local-storage"
-            ? "localStorage key"
-            : source.kind === "session-storage"
-              ? "sessionStorage key"
-              : source.kind === "url-param"
-                ? "URL param"
-                : source.kind === "cookie"
-                  ? "cookie"
-                  : source.kind; // useState/useReducer read naturally as-is
+        : source.kind === "provide-inject"
+          ? "provided key"
+          : source.kind === "tanstack-query" || source.kind === "rtk-query"
+            ? "query"
+            : source.kind === "local-storage"
+              ? "localStorage key"
+              : source.kind === "session-storage"
+                ? "sessionStorage key"
+                : source.kind === "url-param"
+                  ? "URL param"
+                  : source.kind === "cookie"
+                    ? "cookie"
+                    : source.kind === "options-data"
+                      ? "data()"
+                      : source.kind; // useState/useReducer/ref read naturally as-is
   return `${kindLabel} '${source.name}' (${source.loc.file}:${source.loc.line})`;
 }
 

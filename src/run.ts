@@ -1,5 +1,5 @@
 /**
- * runStatelint — the engine entry: files in, sorted findings out.
+ * runStatelinter — the engine entry: files in, sorted findings out.
  * The CLI is a thin I/O shell around this so the core stays testable.
  */
 
@@ -25,13 +25,19 @@ export interface RunOptions {
   minBlindIntermediates?: number;
   /** Forwarded to buildStateGraph — skip unparseable files instead of throwing. */
   onParseError?: BuildOptions["onParseError"];
+  /** Called once after the graph is built, with build-time metadata (e.g.
+   * unmodeled Vue Options API components) the CLI may want to surface. */
+  onMeta?: (meta: { optionsComponents: number }) => void;
 }
 
-export function runStatelint(
+export function runStatelinter(
   files: SourceFileInput[],
   options: RunOptions = {},
 ): Finding[] {
   const graph = buildStateGraph(files, { onParseError: options.onParseError });
+  options.onMeta?.({
+    optionsComponents: graph.unresolved.optionsComponents,
+  });
   // Recommendations follow the app's dominant tools, measured once per run.
   const profile = computeStackProfile(graph);
   const findings = [

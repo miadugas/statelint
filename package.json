@@ -1,25 +1,42 @@
 {
-  "name": "statelint",
-  "version": "0.0.0",
-  "description": "An architecture linter for React state — across every state tool, on every PR.",
+  "name": "statelinter",
+  "version": "0.1.0",
+  "description": "An architecture linter for React and Vue state — across every state tool, on every PR.",
   "type": "module",
   "bin": {
-    "statelint": "./dist/cli.js"
+    "statelinter": "./dist/cli.js"
   },
   "exports": {
     ".": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && cp src/console.html dist/console.html",
+    "build": "tsc -p tsconfig.build.json && cp src/console.html dist/console.html && chmod +x dist/cli.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
+  "keywords": [
+    "lint",
+    "state-management",
+    "react",
+    "vue",
+    "nuxt",
+    "pinia",
+    "zustand",
+    "redux",
+    "architecture",
+    "static-analysis"
+  ],
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "@typescript-eslint/typescript-estree": "^8.0.0"
+    "@typescript-eslint/typescript-estree": "^8.0.0",
+    "@vue/compiler-sfc": "^3.5.39"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
