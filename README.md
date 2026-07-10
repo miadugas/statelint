@@ -23,7 +23,7 @@ makes it runnable headless in CI on every PR.
 Not on npm yet. Run it straight from the repo:
 
 ```sh
-git clone https://github.com/miadugas/statelinter && cd statelinter
+git clone https://github.com/miadugas/statelint.git && cd statelint
 npm install
 npm run build
 npm link          # puts `statelinter` on your PATH
@@ -123,19 +123,19 @@ describe the app, not its tests.
 
 ## The rules
 
-| Rule                           | Fires when                                                                                                                                              | Recommends                                            |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `multiple-sources-of-truth`    | one entity owned by 2+ global sources (context / store — zustand, redux, pinia, vuex / provide-inject / storage / URL / cookie), or server-cached twice | Consolidate on one owner                              |
-| `server-state-in-client-state` | `useState`/`ref` fed by fetch/await in an effect or lifecycle hook, grouped per effect; prefilled drafts soften to Low                                  | TanStack / RTK Query, or Nuxt's useAsyncData/useFetch |
-| `derived-state-as-state`       | `useState`/`ref` recomputed from other state by a synchronous effect/watcher                                                                            | `useMemo`/`computed` — delete the state + effect      |
-| `storage-as-state`             | a localStorage/sessionStorage key read+written across 2+ components (non-reactive)                                                                      | own it in one store with `persist`                    |
-| `cookie-as-state`              | a cookie shared across components via js-cookie / react-cookie / `document.cookie`                                                                      | one reactive owner; persist from there                |
-| `url-state-forked`             | a `useState` copy of a URL search param that goes stale on back/forward                                                                                 | read the param directly                               |
-| `prop-drilling`                | a JSX prop or Vue template bind passes through N components that only forward it (cross-file, blind hops named)                                         | Context/store, or composition (children / slots)      |
-| `over-globalized-state`        | a global store (zustand / redux / pinia / vuex) or context/provide-inject with exactly one real consumer; dead provided values                          | colocate / delete                                     |
-| `over-broad-selector`          | bare `useStore()` or identity selector on a zustand store                                                                                               | narrow the selector                                   |
-| `defeated-memo`                | `React.memo` receiving inline object/array/function props — the memo never holds (React only)                                                           | stabilize the props, or drop the memo                 |
-| `pointless-memo`               | `useMemo`/`useCallback` with no deps array, or an inline literal in the deps (React only)                                                               | fix the deps, or compute inline                       |
+| Rule                           | Fires when                                                                                                                                                | Recommends                                                                           |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `multiple-sources-of-truth`    | one entity owned by 2+ global sources (context / store — zustand, redux, pinia, vuex / provide-inject / storage / URL / cookie), or server-cached twice   | Consolidate on one owner                                                             |
+| `server-state-in-client-state` | `useState`/`ref` fed by fetch/await in an effect or lifecycle hook, grouped per effect; prefilled drafts soften to Low                                    | TanStack / RTK Query, or Nuxt's useAsyncData/useFetch                                |
+| `derived-state-as-state`       | `useState`/`ref` recomputed from other state by a synchronous effect/watcher                                                                              | `useMemo`/`computed` — delete the state + effect                                     |
+| `storage-as-state`             | a localStorage/sessionStorage key read+written across 2+ components (non-reactive)                                                                        | own it in one store with `persist`                                                   |
+| `cookie-as-state`              | a cookie shared across components via js-cookie / react-cookie / `document.cookie`                                                                        | one reactive owner; persist from there                                               |
+| `url-state-forked`             | a `useState` copy of a URL search param that goes stale on back/forward                                                                                   | read the param directly                                                              |
+| `prop-drilling`                | a JSX prop or Vue template bind passes through N components that only forward it (cross-file, blind hops named)                                           | Context/store, or composition (children / slots)                                     |
+| `over-globalized-state`        | a global store (zustand / redux / pinia / vuex) or context/provide-inject with exactly one real consumer; dead provided values                            | colocate / delete                                                                    |
+| `over-broad-selector`          | bare `useStore()` or identity selector on a zustand store, or a component-scope `$subscribe` on a whole pinia store (its callback runs on every mutation) | narrow the selector (zustand); `watch` a specific field, or a persist plugin (pinia) |
+| `defeated-memo`                | `React.memo` receiving inline object/array/function props — the memo never holds (React only)                                                             | stabilize the props, or drop the memo                                                |
+| `pointless-memo`               | `useMemo`/`useCallback` with no deps array, or an inline literal in the deps (React only)                                                                 | fix the deps, or compute inline                                                      |
 
 ---
 

@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -b --noEmit
+      - run: npx vitest run
+      - run: npm run build
+      - run: node dist/cli.js src/
+      - name: examples/react-app must fail (server-state finding)
+        run: |
+          if node dist/cli.js examples/react-app; then echo "expected findings-exit 1 for examples/react-app" && exit 1; fi
