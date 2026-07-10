@@ -278,6 +278,33 @@ const theme = inject('theme');
 });
 
 describe("Vue — server-fed and derived refs", () => {
+  it("registers useQuery from @tanstack/vue-query inside an SFC as a server-cache source", () => {
+    const graph = buildStateGraph([
+      {
+        path: "Todos.vue",
+        code: SFC(
+          `
+import { useQuery } from '@tanstack/vue-query';
+const { data } = useQuery({ queryKey: ['todos'], queryFn: fetchTodos });
+`,
+          "<ul>{{ data?.length }}</ul>",
+        ),
+      },
+    ]);
+
+    const source = graph.sources.get("query:todos");
+    expect(source).toBeDefined();
+    expect(source?.kind).toBe("tanstack-query");
+    expect(source?.classification).toBe("server-cache");
+    expect(source?.name).toBe("todos");
+    expect(graph.edges).toContainEqual({
+      type: "reads",
+      from: "Todos.vue#Todos",
+      to: "query:todos",
+      via: "hook",
+    });
+  });
+
   it("classifies a ref fed by onMounted+fetch as server-cache and recommends vue-query", () => {
     const findings = runStatelinter([
       {
@@ -359,6 +386,144 @@ const reset = () => { normalized.value = ''; };
 `),
       },
     ]);
+    expect(
+      findings.filter((f) => f.rule === "derived-state-as-state"),
+    ).toHaveLength(0);
+  });
+});
+
+describe("Vue — server-fed and derived reactive objects", () => {
+  it("emits a writes edge for a reactive property assignment", () => {
+    const graph = buildStateGraph([
+      {
+        path: "Form.vue",
+        code: SFC(`
+import { reactive } from 'vue';
+const form = reactive({ email: '', name: '' });
+const update = () => { form.email = 'x'; };
+`),
+      },
+    ]);
+    const form = [...graph.sources.values()].find((s) => s.name === "form");
+    expect(form?.kind).toBe("reactive");
+    expect(graph.edges).toContainEqual({
+      type: "writes",
+      from: "Form.vue#Form",
+      to: form!.id,
+      via: "mutate",
+    });
+  });
+
+  it("classifies a reactive object fed by onMounted+fetch as server-cache and recommends vue-query", () => {
+    const findings = runStatelinter([
+      {
+        path: "Profile.vue",
+        code: SFC(`
+import { reactive, onMounted } from 'vue';
+const state = reactive({ user: null });
+onMounted(async () => {
+  const res = await fetch('/api/user');
+  state.user = await res.json();
+});
+`),
+      },
+    ]);
+    const finding = findings.find(
+      (f) => f.rule === "server-state-in-client-state",
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warn");
+    expect(finding?.message).toContain("lives in reactive(...)");
+    expect(finding?.recommendation).toContain("@tanstack/vue-query");
+    expect(finding?.recommendation).toContain("reactive + onMounted + fetch");
+  });
+
+  it("flags a reactive property recomputed by a sync watcher as derived, recommending computed", () => {
+    const findings = runStatelinter([
+      {
+        path: "Search.vue",
+        code: SFC(`
+import { reactive, watch } from 'vue';
+const state = reactive({ query: '', normalized: '' });
+watch(() => state.query, () => {
+  state.normalized = state.query.trim().toLowerCase();
+});
+`),
+      },
+    ]);
+    const finding = findings.find((f) => f.rule === "derived-state-as-state");
+    expect(finding).toBeDefined();
+    expect(finding?.message).toContain("synchronous watcher");
+    expect(finding?.recommendation).toContain("computed(() =>");
+    expect(finding?.recommendation).toContain("reactive(...)");
+  });
+
+  it("never calls a reactive object derived when the template might mutate it (v-model)", () => {
+    const findings = runStatelinter([
+      {
+        path: "Search.vue",
+        code: SFC(
+          `
+import { reactive, watch } from 'vue';
+const state = reactive({ query: '', normalized: '' });
+watch(() => state.query, () => {
+  state.normalized = state.query.trim();
+});
+`,
+          `<input v-model="state.query" />`,
+        ),
+      },
+    ]);
+    expect(
+      findings.filter((f) => f.rule === "derived-state-as-state"),
+    ).toHaveLength(0);
+  });
+
+  it("a reactive property also written outside the watcher is not derived", () => {
+    const findings = runStatelinter([
+      {
+        path: "Search.vue",
+        code: SFC(`
+import { reactive, watch } from 'vue';
+const state = reactive({ query: '', normalized: '' });
+watch(() => state.query, () => {
+  state.normalized = state.query.trim();
+});
+const reset = () => { state.normalized = ''; };
+`),
+      },
+    ]);
+    expect(
+      findings.filter((f) => f.rule === "derived-state-as-state"),
+    ).toHaveLength(0);
+  });
+
+  // Honesty constraint: object-level attribution must never confidently tell a
+  // user to move a whole reactive object that's partly form state. One property
+  // fed by fetch + another mutated by a handler softens to the draft severity
+  // (info), exactly as an edited-outside ref does — never a confident warn.
+  it("softens (never confidently warns) a mixed-use reactive: fetched + handler-edited", () => {
+    const findings = runStatelinter([
+      {
+        path: "Profile.vue",
+        code: SFC(`
+import { reactive, onMounted } from 'vue';
+const state = reactive({ user: null, draftName: '' });
+onMounted(async () => {
+  const res = await fetch('/api/user');
+  state.user = await res.json();
+});
+const rename = (n) => { state.draftName = n; };
+`),
+      },
+    ]);
+    const server = findings.filter(
+      (f) => f.rule === "server-state-in-client-state",
+    );
+    // Softened to the prefilled-draft severity, not a confident "move it" warn.
+    expect(server.every((f) => f.severity !== "warn")).toBe(true);
+    if (server.length > 0) expect(server[0]!.severity).toBe("info");
+    // And never a derived finding.
     expect(
       findings.filter((f) => f.rule === "derived-state-as-state"),
     ).toHaveLength(0);

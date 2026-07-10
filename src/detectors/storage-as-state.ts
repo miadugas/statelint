@@ -42,11 +42,36 @@ export function detectStorageAsState(
     const shown = names.slice(0, 3).join(", ");
     const more = names.length > 3 ? ` +${names.length - 3} more` : "";
 
+    // Compatibility gate: the profile's persistHint names the graph-wide
+    // dominant store, which can belong to the other framework in a mixed
+    // repo. If every participating component is one framework and the hinted
+    // store belongs to the other, drop to the neutral hint. Component ids are
+    // `file#Name`; pinia/vuex → vue, zustand/redux-slice → react.
+    const files = [...touchers].map((id) => id.slice(0, id.lastIndexOf("#")));
+    const componentFramework = files.every((f) => f.endsWith(".vue"))
+      ? "vue"
+      : files.some((f) => f.endsWith(".vue"))
+        ? null // mixed — can't attribute a single framework
+        : "react";
+    const persistFramework =
+      profile.persistKind === "pinia" || profile.persistKind === "vuex"
+        ? "vue"
+        : profile.persistKind === "zustand" ||
+            profile.persistKind === "redux-slice"
+          ? "react"
+          : null;
+    const persistHint =
+      persistFramework &&
+      componentFramework &&
+      persistFramework !== componentFramework
+        ? NEUTRAL_PROFILE.persistHint
+        : profile.persistHint;
+
     findings.push({
       rule: "storage-as-state",
       severity: "warn",
       message: `${label} key '${source.name}' is used as a shared store by ${touchers.size} components (${shown}${more}) — storage isn't reactive, so writes never re-render readers.`,
-      recommendation: `Own '${source.name}' in ${profile.persistHint}; components read state, not storage.`,
+      recommendation: `Own '${source.name}' in ${persistHint}; components read state, not storage.`,
       loc: source.loc,
       path: names,
     });

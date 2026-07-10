@@ -9,15 +9,23 @@ import type { StateGraph, StateKind } from "../graph/schema.js";
 export interface StackProfile {
   /** The query library to recommend, by observed usage. Null = app has neither. */
   serverLib: "TanStack Query" | "RTK Query" | null;
+  /** The kind behind `serverLib`, so consumers can compatibility-gate: RTK
+   * Query is React-only, so a Vue-kind finding must never be pointed at it. */
+  serverLibKind: "rtk-query" | "tanstack-query" | null;
   /** How to phrase "persist it from a store" for this app's dominant store. */
   persistHint: string;
+  /** The store kind behind `persistHint`, so consumers can compatibility-gate:
+   * pinia/vuex belong to Vue, zustand/redux-slice to React. */
+  persistKind: "pinia" | "vuex" | "redux-slice" | "zustand" | null;
   /** Nuxt composables observed — recommend useAsyncData/useFetch first. */
   nuxt: boolean;
 }
 
 export const NEUTRAL_PROFILE: StackProfile = {
   serverLib: null,
+  serverLibKind: null,
   persistHint: "one reactive store with a persist middleware",
+  persistKind: null,
   nuxt: false,
 };
 
@@ -39,23 +47,46 @@ export function computeStackProfile(graph: StateGraph): StackProfile {
   const pinia = usageOf(graph, "pinia");
   const vuex = usageOf(graph, "vuex");
 
-  const serverLib =
+  const serverLibKind =
     tanstack === 0 && rtkq === 0
       ? null
       : rtkq > tanstack
+        ? "rtk-query"
+        : "tanstack-query";
+  const serverLib =
+    serverLibKind === null
+      ? null
+      : serverLibKind === "rtk-query"
         ? "RTK Query"
         : "TanStack Query";
 
-  const persistHint =
+  const persistKind =
     zustand === 0 && redux === 0 && pinia === 0 && vuex === 0
-      ? NEUTRAL_PROFILE.persistHint
+      ? null
       : pinia >= vuex && pinia >= redux && pinia >= zustand
-        ? "your pinia store via pinia-plugin-persistedstate"
+        ? "pinia"
         : vuex >= redux && vuex >= zustand
-          ? "your Vuex store via vuex-persistedstate"
+          ? "vuex"
           : redux > zustand
+            ? "redux-slice"
+            : "zustand";
+
+  const persistHint =
+    persistKind === null
+      ? NEUTRAL_PROFILE.persistHint
+      : persistKind === "pinia"
+        ? "your pinia store via pinia-plugin-persistedstate"
+        : persistKind === "vuex"
+          ? "your Vuex store via vuex-persistedstate"
+          : persistKind === "redux-slice"
             ? "the Redux store via redux-persist"
             : "your zustand store via its persist middleware";
 
-  return { serverLib, persistHint, nuxt: graph.frameworkHints.nuxt };
+  return {
+    serverLib,
+    serverLibKind,
+    persistHint,
+    persistKind,
+    nuxt: graph.frameworkHints.nuxt,
+  };
 }

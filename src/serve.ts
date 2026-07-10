@@ -7,13 +7,16 @@
 
 import { createServer } from "node:http";
 import type { Server } from "node:http";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { SourceFileInput } from "./graph/build.js";
 import type { Finding } from "./detectors/types.js";
 import { discoverFiles } from "./discover.js";
 import { formatFindings } from "./format.js";
 import { runStatelinter } from "./run.js";
+
+type DemoKey = "react" | "vue";
 
 interface ScanResult {
   findings: Finding[];
@@ -23,8 +26,54 @@ interface ScanResult {
     fileCount: number;
     durationMs: number;
     command: string;
+    stack: { react: boolean; vue: boolean; nuxt: boolean };
+    demo: DemoKey | null;
+    demos: { react: boolean; vue: boolean };
   };
   termHtml: string;
+}
+
+/**
+ * Bundled example apps, viewable from the console with one click. Paths are
+ * relative to the package root — examples/ sits next to both src/ (dev, via
+ * tsx) and dist/ (built), and serve.ts lives in one or the other, so
+ * resolving against import.meta.url of *this* file lands on the right
+ * examples/ dir either way.
+ *
+ * STRICT whitelist: these are the only two demo values ever accepted. The
+ * `demo` query param is checked for exact equality against these keys before
+ * it touches the filesystem — it is never concatenated into a path itself,
+ * so there is no traversal surface here.
+ */
+const DEMOS: Record<DemoKey, string> = {
+  react: "examples/react-app",
+  vue: "examples/vue-app",
+};
+
+function demoDir(key: DemoKey): string {
+  return fileURLToPath(new URL(`../${DEMOS[key]}`, import.meta.url));
+}
+
+function demosAvailable(): { react: boolean; vue: boolean } {
+  return {
+    react: existsSync(demoDir("react")),
+    vue: existsSync(demoDir("vue")),
+  };
+}
+
+/**
+ * Validate a caller-supplied `demo` param against the whitelist and confirm
+ * the target dir actually exists on disk right now. Anything else (missing
+ * param, unknown value, path traversal junk, a dir that isn't there) returns
+ * null — the caller falls back to the normal startup-path scan.
+ */
+function resolveDemo(
+  param: string | null,
+): { key: DemoKey; dir: string } | null {
+  if (param !== "react" && param !== "vue") return null;
+  const dir = demoDir(param);
+  if (!existsSync(dir)) return null;
+  return { key: param, dir };
 }
 
 /** Convert statelinter's own ANSI output (codes 0/1/2/31/32/33/36) to spans. */
@@ -58,11 +107,21 @@ export function ansiToHtml(text: string): string {
   return out + "</span>".repeat(open);
 }
 
-export function scan(paths: string[], cwd: string): ScanResult {
+export function scan(
+  paths: string[],
+  cwd: string,
+  demo: DemoKey | null = null,
+): ScanResult {
   const started = performance.now();
   const files: SourceFileInput[] = [];
   for (const path of paths) discoverFiles(path, files);
-  const findings = runStatelinter(files, { onParseError: () => {} });
+  let stack = { react: false, vue: false, nuxt: false };
+  const findings = runStatelinter(files, {
+    onParseError: () => {},
+    onMeta: (meta) => {
+      stack = meta.stack;
+    },
+  });
   const durationMs = performance.now() - started;
 
   const pretty = formatFindings(findings, {
@@ -80,7 +139,10 @@ export function scan(paths: string[], cwd: string): ScanResult {
       repo: basename(cwd),
       fileCount: files.length,
       durationMs: Math.round(durationMs),
-      command: `statelinter ${paths.join(" ")}`,
+      command: `statelinter ${demo ? DEMOS[demo] : paths.join(" ")}`,
+      stack,
+      demo,
+      demos: demosAvailable(),
     },
     termHtml: ansiToHtml(pretty),
   };
@@ -100,6 +162,19 @@ function composePage(result: ScanResult): string {
     .replace("__TERM__", embed(result.termHtml));
 }
 
+/**
+ * Scan for one incoming request: honors ?demo=react|vue against the strict
+ * whitelist in resolveDemo, scanning that example dir instead of the
+ * caller's startup paths. Any other value (missing dir, unknown key, path
+ * traversal junk) is ignored and falls back to the normal scan — the query
+ * param is never used to build a filesystem path itself.
+ */
+function scanForRequest(url: URL, paths: string[], cwd: string): ScanResult {
+  const demo = resolveDemo(url.searchParams.get("demo"));
+  if (demo) return scan([demo.dir], demo.dir, demo.key);
+  return scan(paths, cwd, null);
+}
+
 export function startConsole(
   paths: string[],
   port: number,
@@ -108,14 +183,15 @@ export function startConsole(
 
   const server = createServer((req, res) => {
     try {
-      if (req.url === "/" || req.url === "/index.html") {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      if (url.pathname === "/" || url.pathname === "/index.html") {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(composePage(scan(paths, cwd)));
+        res.end(composePage(scanForRequest(url, paths, cwd)));
         return;
       }
-      if (req.url === "/api/scan") {
+      if (url.pathname === "/api/scan") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(scan(paths, cwd)));
+        res.end(JSON.stringify(scanForRequest(url, paths, cwd)));
         return;
       }
       res.writeHead(404, { "content-type": "text/plain" });

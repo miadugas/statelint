@@ -25,6 +25,7 @@ export function detectServerStateInClientState(
       source.kind !== "useState" &&
       source.kind !== "useReducer" &&
       source.kind !== "ref" &&
+      source.kind !== "reactive" &&
       source.kind !== "options-data"
     )
       continue;
@@ -48,9 +49,15 @@ export function detectServerStateInClientState(
 
     // Wording keys on the source kind — the only framework evidence we have.
     const options = first.kind === "options-data";
-    const vue = first.kind === "ref" || options;
-    // options-data reads as `data()`; ref/useState/useReducer read as-is.
-    const kindLabel = options ? "data()" : first.kind;
+    const reactive = first.kind === "reactive";
+    const vue = first.kind === "ref" || reactive || options;
+    // options-data reads as `data()`; reactive as `reactive(...)`;
+    // ref/useState/useReducer read as-is.
+    const kindLabel = options
+      ? "data()"
+      : reactive
+        ? "reactive(...)"
+        : first.kind;
     const where = options
       ? "a lifecycle hook"
       : vue
@@ -58,9 +65,11 @@ export function detectServerStateInClientState(
         : "an effect";
     const triple = options
       ? "the data() + lifecycle-hook + fetch triple"
-      : vue
-        ? "the ref + onMounted + fetch triple"
-        : "the useState + useEffect + fetch triple";
+      : reactive
+        ? "the reactive + onMounted + fetch triple"
+        : vue
+          ? "the ref + onMounted + fetch triple"
+          : "the useState + useEffect + fetch triple";
 
     const subject =
       sorted.length === 1
@@ -79,9 +88,14 @@ export function detectServerStateInClientState(
           }.`,
       recommendation: allDrafts
         ? "Fetch with useQuery and seed the draft from its data (or a form library’s defaultValues) — separate the fetching concern from the editing concern."
-        : profile.serverLib === "RTK Query"
+        : // "this app already uses it" is only honest for React-kind sources:
+          // RTK Query is React-only, and react-query / vue-query share the
+          // "tanstack-query" kind, so a Vue-kind source can't prove the app
+          // uses the Vue flavor. Vue-kind sources fall through to the
+          // Nuxt/vue-query wording, which names the package without claiming it.
+          !vue && profile.serverLib === "RTK Query"
           ? `Move to RTK Query — this app already uses it: an endpoint replaces ${triple}.`
-          : profile.serverLib === "TanStack Query"
+          : !vue && profile.serverLib === "TanStack Query"
             ? `Move to TanStack Query — this app already uses it: useQuery replaces ${triple}.`
             : vue && profile.nuxt
               ? `Move to Nuxt's useAsyncData/useFetch — data, pending, and error replace ${triple} (or @tanstack/vue-query for richer caching).`

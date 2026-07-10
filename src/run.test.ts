@@ -86,3 +86,82 @@ describe("runStatelinter", () => {
     ).toThrow();
   });
 });
+
+describe("runStatelinter — onMeta stack detection", () => {
+  it("reports vue-only for a .vue SFC using pinia", () => {
+    const metas: Array<{
+      optionsComponents: number;
+      stack: { react: boolean; vue: boolean; nuxt: boolean };
+    }> = [];
+    runStatelinter(
+      [
+        {
+          path: "stores/cart.ts",
+          code: `
+            import { defineStore } from 'pinia';
+            export const useCartStore = defineStore('cart', {
+              state: () => ({ items: [] }),
+            });
+          `,
+        },
+        {
+          path: "Cart.vue",
+          code: `<template>\n  <div>{{ items }}</div>\n</template>\n\n<script setup lang="ts">\nimport { useCartStore } from './stores/cart';\nconst store = useCartStore();\nconst items = store.items;\n</script>\n`,
+        },
+      ],
+      { onMeta: (meta) => metas.push(meta) },
+    );
+    expect(metas).toHaveLength(1);
+    expect(metas[0]!.stack).toEqual({ react: false, vue: true, nuxt: false });
+  });
+
+  it("reports react-only for a .tsx useState component", () => {
+    const metas: Array<{
+      optionsComponents: number;
+      stack: { react: boolean; vue: boolean; nuxt: boolean };
+    }> = [];
+    runStatelinter(
+      [
+        {
+          path: "Counter.tsx",
+          code: `
+            function Counter() {
+              const [count, setCount] = useState(0);
+              return <button onClick={() => setCount(count + 1)}>{count}</button>;
+            }
+          `,
+        },
+      ],
+      { onMeta: (meta) => metas.push(meta) },
+    );
+    expect(metas).toHaveLength(1);
+    expect(metas[0]!.stack).toEqual({ react: true, vue: false, nuxt: false });
+  });
+
+  it("reports both for a repo that mixes React and Vue components", () => {
+    const metas: Array<{
+      optionsComponents: number;
+      stack: { react: boolean; vue: boolean; nuxt: boolean };
+    }> = [];
+    runStatelinter(
+      [
+        {
+          path: "Counter.tsx",
+          code: `
+            function Counter() {
+              const [count, setCount] = useState(0);
+              return <button onClick={() => setCount(count + 1)}>{count}</button>;
+            }
+          `,
+        },
+        {
+          path: "Cart.vue",
+          code: `<template>\n  <div />\n</template>\n\n<script setup lang="ts">\nimport { ref } from 'vue';\nconst items = ref([]);\n</script>\n`,
+        },
+      ],
+      { onMeta: (meta) => metas.push(meta) },
+    );
+    expect(metas).toHaveLength(1);
+    expect(metas[0]!.stack).toEqual({ react: true, vue: true, nuxt: false });
+  });
+});

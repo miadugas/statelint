@@ -42,13 +42,25 @@ export function detectCookieAsState(graph: StateGraph): Finding[] {
     const shown = names.slice(0, 3).join(", ");
     const more = names.length > 3 ? ` +${names.length - 3} more` : "";
 
+    // Key the fix wording off the participating components' own files — a
+    // React library recommended to an all-Vue finding is a confident wrong
+    // claim. Component ids are `file#Name`.
+    const files = [...touchers].map((id) => id.slice(0, id.lastIndexOf("#")));
+    const allVue = files.every((f) => f.endsWith(".vue"));
+    const noneVue = files.every((f) => !f.endsWith(".vue"));
+    const recommendation = allVue
+      ? `Give '${source.name}' one reactive owner: a pinia store or composable that owns the cookie and syncs it as an effect — never write it from two mechanisms.`
+      : noneVue
+        ? `Give '${source.name}' one reactive owner: react-cookie's useCookies everywhere, or a store that syncs the cookie as an effect — never write it from two mechanisms.`
+        : `Give '${source.name}' one reactive owner — a single store or hook/composable that syncs the cookie as an effect; never write it from two mechanisms.`;
+
     findings.push({
       rule: "cookie-as-state",
       severity: "warn",
       message: reactiveAccess
         ? `Cookie '${source.name}' mixes react-cookie with raw access across ${touchers.size} components (${shown}${more}) — raw writes never notify the reactive readers.`
         : `Cookie '${source.name}' is used as a shared store by ${touchers.size} components (${shown}${more}) — cookie access isn't reactive, so writes never re-render readers.`,
-      recommendation: `Give '${source.name}' one reactive owner: react-cookie's useCookies everywhere, or a store that syncs the cookie as an effect — never write it from two mechanisms.`,
+      recommendation,
       loc: source.loc,
       path: names,
     });

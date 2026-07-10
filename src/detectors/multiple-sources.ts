@@ -155,6 +155,15 @@ export function detectMultipleSourcesOfTruth(
     const hasQuery = sorted.some(
       (s) => s.kind === "tanstack-query" || s.kind === "rtk-query",
     );
+    // Compatibility gate: RTK Query is React-only. If the finding's caches are
+    // all Vue-kind, never name RTK Query — fall back to the neutral library.
+    const vueOnly = sorted.every(
+      (s) => s.kind === "ref" || s.kind === "options-data",
+    );
+    const serverLib =
+      profile.serverLibKind === "rtk-query" && vueOnly
+        ? null
+        : profile.serverLib;
     findings.push({
       rule: "multiple-sources-of-truth",
       severity: "warn",
@@ -165,7 +174,7 @@ export function detectMultipleSourcesOfTruth(
         )}. Hand-rolled caches drift from each other${hasQuery ? " and from the query cache" : ""}.`,
       recommendation: hasQuery
         ? `Read '${entity}' via the existing query everywhere and delete the manual fetch caches.`
-        : `Cache '${entity}' once in ${profile.serverLib ?? "a query library (TanStack Query)"} and delete the per-component copies.`,
+        : `Cache '${entity}' once in ${serverLib ?? "a query library (TanStack Query)"} and delete the per-component copies.`,
       loc: sorted[0]!.loc,
       path: sorted.map((s) => s.id),
     });

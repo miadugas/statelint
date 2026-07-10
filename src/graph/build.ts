@@ -2501,6 +2501,7 @@ function analyzeVueComponent(
     comp,
     isVueName,
     maps.refNames,
+    maps.reactiveNames,
     sources,
     parents,
     templateMutates,
@@ -2508,15 +2509,44 @@ function analyzeVueComponent(
 }
 
 /**
- * Vue mirror of reclassifyServerFedState: a ref assigned inside async
+ * Resolve an assignment LHS to the reactive source it feeds, using the same
+ * single-level shape as emitVueReactiveEdges: `ref.value = …` for refs and
+ * `state.prop = …` (any single-level property) for reactive objects.
+ * Reactive attribution is object-level — the StateId is the binding, not the
+ * property — so nested writes (`state.a.b = …`) stay out of scope, mirroring
+ * the edge behavior.
+ */
+function resolveVueFedTarget(
+  left: TSESTree.Node,
+  refNames: Map<string, StateId>,
+  reactiveNames: Map<string, StateId>,
+): StateId | null {
+  if (
+    left.type !== "MemberExpression" ||
+    left.object.type !== "Identifier" ||
+    left.property.type !== "Identifier"
+  )
+    return null;
+  if (left.property.name === "value") {
+    const refId = refNames.get(left.object.name);
+    if (refId) return refId;
+  }
+  return reactiveNames.get(left.object.name) ?? null;
+}
+
+/**
+ * Vue mirror of reclassifyServerFedState: a ref/reactive assigned inside async
  * lifecycle work (onMounted + fetch, async watch) is a hand-rolled server
- * cache; a ref recomputed by a SYNC watcher is derived state that should be
- * a computed. onMounted sync assignment is one-time init — never derived.
+ * cache; a ref/reactive recomputed by a SYNC watcher is derived state that
+ * should be a computed. onMounted sync assignment is one-time init — never
+ * derived. Reactive attribution is object-level (see resolveVueFedTarget), so
+ * any single property fed or edited moves the whole binding.
  */
 function reclassifyVueFedState(
   comp: VueComponentInfo,
   isVueName: (name: string) => boolean,
   refNames: Map<string, StateId>,
+  reactiveNames: Map<string, StateId>,
   sources: Map<StateId, StateSource>,
   parents: ParentMap,
   templateMutates: (name: string) => boolean,
@@ -2546,15 +2576,7 @@ function reclassifyVueFedState(
       )
         asyncWork = true;
       if (inner.type !== "AssignmentExpression") return;
-      const left = inner.left;
-      if (
-        left.type !== "MemberExpression" ||
-        left.object.type !== "Identifier" ||
-        left.property.type !== "Identifier" ||
-        left.property.name !== "value"
-      )
-        return;
-      const stateId = refNames.get(left.object.name);
+      const stateId = resolveVueFedTarget(inner.left, refNames, reactiveNames);
       if (!stateId) return;
       // Nested callbacks (.then handlers, timers, subscriptions) are
       // event/async-driven feeds, not direct recomputation.
@@ -2596,19 +2618,12 @@ function reclassifyVueFedState(
 
   if (callbacks.size === 0) return;
 
-  // A `.value` assignment outside every lifecycle callback means other logic
-  // writes this ref too — draft for server-fed, disqualifier for derived.
+  // A ref `.value` (or reactive property) assignment outside every lifecycle
+  // callback means other logic writes this source too — draft for server-fed,
+  // disqualifier for derived.
   walk(comp.program, (node) => {
     if (node.type !== "AssignmentExpression") return;
-    const left = node.left;
-    if (
-      left.type !== "MemberExpression" ||
-      left.object.type !== "Identifier" ||
-      left.property.type !== "Identifier" ||
-      left.property.name !== "value"
-    )
-      return;
-    const stateId = refNames.get(left.object.name);
+    const stateId = resolveVueFedTarget(node.left, refNames, reactiveNames);
     if (!stateId) return;
     const source = sources.get(stateId);
     if (!source?.serverFed && !source?.derivedSync) return;
@@ -2623,7 +2638,7 @@ function reclassifyVueFedState(
 
   // Finalize, guarding against template writes (AST-precise when available,
   // conservative regex otherwise).
-  for (const [name, stateId] of refNames) {
+  for (const [name, stateId] of [...refNames, ...reactiveNames]) {
     const source = sources.get(stateId);
     if (!source) continue;
     if (templateMutates(name)) {
@@ -3405,6 +3420,7 @@ function analyzeVueOptionsComponent(
       comp,
       isVueName,
       setupMaps.refNames,
+      setupMaps.reactiveNames,
       sources,
       parents,
       setupTemplateMutates,

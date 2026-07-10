@@ -20,6 +20,7 @@ export function detectDerivedStateAsState(graph: StateGraph): Finding[] {
       source.kind !== "useState" &&
       source.kind !== "useReducer" &&
       source.kind !== "ref" &&
+      source.kind !== "reactive" &&
       source.kind !== "options-data"
     )
       continue;
@@ -27,7 +28,8 @@ export function detectDerivedStateAsState(graph: StateGraph): Finding[] {
 
     // The fix is framework-specific, so it keys on the source kind.
     const options = source.kind === "options-data";
-    const vue = source.kind === "ref" || options;
+    const reactive = source.kind === "reactive";
+    const vue = source.kind === "ref" || reactive || options;
     findings.push({
       rule: "derived-state-as-state",
       severity: "warn",
@@ -36,9 +38,11 @@ export function detectDerivedStateAsState(graph: StateGraph): Finding[] {
       } — it's a pure function of existing data, stored as state. Every change renders twice, once with '${source.name}' stale.`,
       recommendation: options
         ? `Make it a computed: add ${source.name}() to the computed option — delete the data field and the watch handler.`
-        : vue
-          ? `Make it computed: const ${source.name} = computed(() => …) — delete the ref and the watcher.`
-          : `Compute it during render: const ${source.name} = useMemo(() => …, [deps]) — or inline it if cheap. Delete the useState and the useEffect.`,
+        : reactive
+          ? `Make it computed: const ${source.name} = computed(() => …) — delete the reactive(...) and the watcher.`
+          : vue
+            ? `Make it computed: const ${source.name} = computed(() => …) — delete the ref and the watcher.`
+            : `Compute it during render: const ${source.name} = useMemo(() => …, [deps]) — or inline it if cheap. Delete the useState and the useEffect.`,
       loc: source.derivedSync.effect,
       path: source.ownerComponentId ? [source.ownerComponentId] : undefined,
     });

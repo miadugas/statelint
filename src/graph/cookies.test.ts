@@ -194,6 +194,94 @@ describe("detectCookieAsState", () => {
     expect(detectCookieAsState(graph)).toHaveLength(0);
   });
 
+  it("recommends Vue wording, never react-cookie, when two .vue SFCs share a cookie", () => {
+    const graph = buildStateGraph([
+      {
+        path: "src/Login.vue",
+        code: `<template>
+  <button @click="login">Go</button>
+</template>
+<script setup lang="ts">
+import Cookies from 'js-cookie';
+const login = () => Cookies.set('session', 'abc');
+</script>
+`,
+      },
+      {
+        path: "src/Gate.vue",
+        code: `<template>
+  <main v-if="token" />
+  <p v-else>locked</p>
+</template>
+<script setup lang="ts">
+import Cookies from 'js-cookie';
+const token = Cookies.get('session');
+</script>
+`,
+      },
+    ]);
+    const findings = detectCookieAsState(graph);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.recommendation).not.toContain("react-cookie");
+    expect(findings[0]!.recommendation).toContain("pinia store or composable");
+  });
+
+  it("uses neutral wording when a cookie is shared across a mixed React + Vue pair", () => {
+    const graph = buildStateGraph([
+      {
+        path: "src/Login.tsx",
+        code: `
+          import Cookies from 'js-cookie';
+          export function Login() {
+            return <button onClick={() => Cookies.set('session', 'abc')}>Go</button>;
+          }
+        `,
+      },
+      {
+        path: "src/Gate.vue",
+        code: `<template>
+  <main v-if="token" />
+</template>
+<script setup lang="ts">
+import Cookies from 'js-cookie';
+const token = Cookies.get('session');
+</script>
+`,
+      },
+    ]);
+    const findings = detectCookieAsState(graph);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.recommendation).not.toContain("react-cookie");
+    expect(findings[0]!.recommendation).not.toContain("pinia");
+    expect(findings[0]!.recommendation).toContain("hook/composable");
+  });
+
+  it("keeps react-cookie wording for an all-React finding", () => {
+    const graph = buildStateGraph([
+      {
+        path: "src/Login.tsx",
+        code: `
+          import Cookies from 'js-cookie';
+          export function Login() {
+            return <button onClick={() => Cookies.set('session', 'abc')}>Go</button>;
+          }
+        `,
+      },
+      {
+        path: "src/Gate.tsx",
+        code: `
+          import Cookies from 'js-cookie';
+          export function Gate() {
+            return Cookies.get('session') ? <main /> : <p>locked</p>;
+          }
+        `,
+      },
+    ]);
+    const findings = detectCookieAsState(graph);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.recommendation).toContain("react-cookie");
+  });
+
   it("stays quiet for single-owner cookies", () => {
     const graph = buildStateGraph([
       {

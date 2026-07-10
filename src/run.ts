@@ -19,6 +19,7 @@ import { computeStackProfile } from "./detectors/stack.js";
 import { detectStorageAsState } from "./detectors/storage-as-state.js";
 import { detectUrlStateForked } from "./detectors/url-fork.js";
 import type { Finding } from "./detectors/types.js";
+import type { StateGraph, StateKind } from "./graph/schema.js";
 
 export interface RunOptions {
   /** Prop-drilling threshold; see PropDrillingOptions. */
@@ -26,8 +27,55 @@ export interface RunOptions {
   /** Forwarded to buildStateGraph — skip unparseable files instead of throwing. */
   onParseError?: BuildOptions["onParseError"];
   /** Called once after the graph is built, with build-time metadata (e.g.
-   * unmodeled Vue Options API components) the CLI may want to surface. */
-  onMeta?: (meta: { optionsComponents: number }) => void;
+   * unmodeled Vue Options API components, and which frameworks the scanned
+   * files use) the CLI may want to surface. */
+  onMeta?: (meta: {
+    optionsComponents: number;
+    stack: { react: boolean; vue: boolean; nuxt: boolean };
+  }) => void;
+}
+
+// Kinds that only exist on the Vue side of the graph (see graph/schema.ts).
+const VUE_KINDS = new Set<StateKind>([
+  "ref",
+  "reactive",
+  "computed",
+  "pinia",
+  "provide-inject",
+  "vuex",
+  "options-data",
+]);
+// Kinds that only exist on the React side. `tanstack-query` is deliberately
+// excluded — @tanstack/vue-query registers sources under the same
+// "tanstack-query" kind (see graph/vue.test.ts), so it can't disambiguate.
+const REACT_KINDS = new Set<StateKind>([
+  "useState",
+  "useReducer",
+  "context",
+  "zustand",
+  "redux-slice",
+  "rtk-query",
+]);
+
+/** Cheap, single-pass stack detection: component file extensions plus each
+ * source's kind (both signals are framework-exclusive except tanstack-query,
+ * which both React and Vue Query register under the same kind — see above). */
+function detectStack(
+  graph: StateGraph,
+  nuxt: boolean,
+): { react: boolean; vue: boolean; nuxt: boolean } {
+  let react = false;
+  let vue = false;
+  for (const id of graph.components.keys()) {
+    const file = id.slice(0, id.lastIndexOf("#"));
+    if (file.endsWith(".vue")) vue = true;
+    else if (file.endsWith(".tsx") || file.endsWith(".jsx")) react = true;
+  }
+  for (const source of graph.sources.values()) {
+    if (VUE_KINDS.has(source.kind)) vue = true;
+    else if (REACT_KINDS.has(source.kind)) react = true;
+  }
+  return { react, vue, nuxt };
 }
 
 export function runStatelinter(
@@ -35,11 +83,12 @@ export function runStatelinter(
   options: RunOptions = {},
 ): Finding[] {
   const graph = buildStateGraph(files, { onParseError: options.onParseError });
-  options.onMeta?.({
-    optionsComponents: graph.unresolved.optionsComponents,
-  });
   // Recommendations follow the app's dominant tools, measured once per run.
   const profile = computeStackProfile(graph);
+  options.onMeta?.({
+    optionsComponents: graph.unresolved.optionsComponents,
+    stack: detectStack(graph, profile.nuxt),
+  });
   const findings = [
     ...detectMultipleSourcesOfTruth(graph, profile),
     ...detectServerStateInClientState(graph, profile),

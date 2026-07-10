@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" data-accent="react">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -10,61 +10,81 @@
           ui-rounded, -apple-system, BlinkMacSystemFont, "SF Pro Rounded",
           "SF Pro Text", "Segoe UI", sans-serif;
         --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Code", monospace;
-        --green: #6cc030;
-        --green-deep: #4e9a1d;
         --radius-card: 20px;
         --radius-pill: 999px;
       }
       :root[data-theme="light"] {
-        --page: #f4f6f0;
+        --page: #d1c6ae;
         --page-glow: radial-gradient(
           1200px 500px at 85% -10%,
-          #d9efc0 0%,
+          #e8dfc9 0%,
           transparent 60%
         );
-        --surface: #ffffff;
-        --surface-tint: #f3f9e9;
-        --edge: #e2e7da;
-        --edge-strong: #cdd6c2;
-        --text: #1c2415;
-        --text-2: #5b6552;
-        --text-3: #8a927f;
+        --surface: #ede7d9;
+        --surface-tint: #f1ebdd;
+        --edge: #bfb29a;
+        --edge-strong: #a89a80;
+        --text: #211d15;
+        --text-2: #5c5546;
+        --text-3: #8a8272;
         --chip-high-bg: #fdecec;
         --chip-high-fg: #c53030;
         --chip-med-bg: #fdf3dd;
         --chip-med-fg: #a16207;
         --chip-low-bg: #e3f4f6;
         --chip-low-fg: #0e7490;
-        --btn-grad: linear-gradient(180deg, #8ed94a, #6cc030);
-        --btn-fg: #ffffff;
         --shadow:
-          0 10px 30px rgba(60, 90, 30, 0.1), 0 2px 6px rgba(60, 90, 30, 0.06);
-        --term-shadow: 0 18px 48px rgba(30, 45, 15, 0.18);
+          0 10px 30px rgba(60, 45, 20, 0.14), 0 2px 6px rgba(60, 45, 20, 0.08);
+        --term-shadow: 0 18px 48px rgba(40, 30, 15, 0.22);
       }
       :root[data-theme="dark"] {
-        --page: #0e120a;
+        --page: #101113;
         --page-glow: radial-gradient(
           1200px 500px at 85% -10%,
-          #1d310e 0%,
+          #1c1e21 0%,
           transparent 60%
         );
-        --surface: #161c10;
-        --surface-tint: #1a2213;
-        --edge: #242d1a;
-        --edge-strong: #334025;
-        --text: #eef3e6;
-        --text-2: #a9b49a;
-        --text-3: #6e7860;
+        --surface: #1a1c1f;
+        --surface-tint: #1e2024;
+        --edge: #26282d;
+        --edge-strong: #34373d;
+        --text: #ecedee;
+        --text-2: #a6a9ad;
+        --text-3: #6e7176;
         --chip-high-bg: #3a1418;
         --chip-high-fg: #ff8a8a;
         --chip-med-bg: #362a0d;
         --chip-med-fg: #f0c04d;
         --chip-low-bg: #0d2f35;
         --chip-low-fg: #6fd4e0;
-        --btn-grad: linear-gradient(180deg, #86d243, #5da828);
-        --btn-fg: #0e120a;
         --shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
         --term-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+      }
+
+      /* ── Accent (React = blue, Vue = green) ── */
+      :root[data-accent="react"][data-theme="light"] {
+        --accent: #3178c6;
+        --accent-deep: #275f9e;
+        --btn-grad: linear-gradient(180deg, #5b9ee6, #3178c6);
+        --btn-fg: #ffffff;
+      }
+      :root[data-accent="react"][data-theme="dark"] {
+        --accent: #58a6ff;
+        --accent-deep: #3d8ce0;
+        --btn-grad: linear-gradient(180deg, #58a6ff, #2f81d6);
+        --btn-fg: #101113;
+      }
+      :root[data-accent="vue"][data-theme="light"] {
+        --accent: #35a06f;
+        --accent-deep: #27804f;
+        --btn-grad: linear-gradient(180deg, #55c892, #35a06f);
+        --btn-fg: #ffffff;
+      }
+      :root[data-accent="vue"][data-theme="dark"] {
+        --accent: #42b883;
+        --accent-deep: #2f9c6c;
+        --btn-grad: linear-gradient(180deg, #4fce94, #38b378);
+        --btn-fg: #101113;
       }
 
       * {
@@ -92,7 +112,7 @@
         cursor: pointer;
       }
       :focus-visible {
-        outline: 3px solid var(--green);
+        outline: 3px solid var(--accent);
         outline-offset: 2px;
         border-radius: 6px;
       }
@@ -189,7 +209,7 @@
         align-items: center;
         gap: 14px;
         background: var(--surface-tint);
-        border: 1.5px solid var(--green);
+        border: 1.5px solid var(--accent);
         border-radius: var(--radius-card);
         padding: 16px 20px;
         margin-bottom: 24px;
@@ -273,6 +293,13 @@
         font-size: 12.5px;
         line-height: 1.62;
         color: #d6d9de;
+        /* Wrap long unbroken tokens (the scanned absolute path, the echoed
+           command) instead of forcing a horizontal scroll whose scrollbar is
+           invisible under macOS overlay scrollbars — the path read as cut off.
+           pre-wrap keeps the diagnostic indentation; anywhere breaks a path
+           that has no hyphen/slash break opportunity of its own. */
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
       .term .b {
         font-weight: 700;
@@ -409,6 +436,12 @@
         gap: 8px;
         align-items: baseline;
         flex-wrap: wrap;
+        min-width: 0;
+        /* Inherited by the path text below — a long unbroken file path wraps
+           and stays readable inside the card instead of being clipped by
+           .col { overflow: hidden }. anywhere (not break-word) is what actually
+           reduces the token's min-content width. */
+        overflow-wrap: anywhere;
       }
       .file-link {
         background: none;
@@ -421,13 +454,21 @@
         gap: 8px;
         align-items: baseline;
         border-radius: 4px;
+        /* Let the button and its path span shrink below their content width so
+           overflow-wrap can break the path; without this the inline-flex item
+           keeps its full min-content width. */
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      .file-link > span {
+        min-width: 0;
       }
       .file-link b {
         color: var(--text);
         font-weight: 700;
       }
       .file-link:hover b {
-        color: var(--green-deep);
+        color: var(--accent-deep);
         text-decoration: underline;
       }
       .file-link .pos {
@@ -457,7 +498,7 @@
       }
       .finding .fix::before {
         content: "→ ";
-        color: var(--green-deep);
+        color: var(--accent-deep);
         font-weight: 700;
       }
       .empty {
@@ -470,7 +511,7 @@
         font-size: 26px;
         display: block;
         margin-bottom: 6px;
-        color: var(--green);
+        color: var(--accent);
       }
 
       dialog {
@@ -505,6 +546,9 @@
         padding: 4px;
         gap: 4px;
       }
+      .seg.seg-2 {
+        grid-template-columns: repeat(2, 1fr);
+      }
       .seg button {
         border: none;
         border-radius: var(--radius-pill);
@@ -518,6 +562,12 @@
         background: var(--btn-grad);
         color: var(--btn-fg);
         box-shadow: var(--shadow);
+      }
+      /* Picker options ruled out by the detected stack — see
+         applyAccent() below. */
+      .seg button:disabled {
+        opacity: 0.45;
+        cursor: default;
       }
       .coming {
         margin-top: 18px;
@@ -570,6 +620,31 @@
       /* ── Instructions ── */
       section.docs {
         margin-top: 44px;
+      }
+      section.docs > h2 {
+        margin: 0 0 14px;
+      }
+      .docs-toggle {
+        all: unset;
+        box-sizing: border-box;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font: inherit;
+        color: inherit;
+      }
+      .docs-toggle .chev {
+        margin-left: auto;
+        color: var(--text-3);
+        transition: transform 0.2s ease;
+      }
+      section.docs.collapsed .docs-toggle .chev {
+        transform: rotate(-90deg);
+      }
+      section.docs.collapsed .docs-grid {
+        display: none;
       }
       .docs-grid {
         display: grid;
@@ -660,6 +735,18 @@
         color: var(--text);
         width: 42%;
       }
+      /* Docs rows/spans tagged for a framework this repo's stack doesn't
+         use — see applyStackVisibility() below. */
+      .stack-hidden {
+        display: none;
+      }
+      /* Generic hide — Demos row/controls that don't apply right now (no
+         bundled example on disk, or not currently viewing one). Kept
+         separate from .stack-hidden so tests asserting "nothing is
+         stack-hidden" aren't tripped up by an unrelated feature. */
+      .is-hidden {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -669,7 +756,9 @@
           <span class="logo-badge">▲</span>
           <span
             >statelinter
-            <div class="header-sub">React state architecture linter</div></span
+            <div class="header-sub">
+              React &amp; Vue state architecture linter
+            </div></span
           >
         </div>
         <div class="spacer"></div>
@@ -702,13 +791,24 @@
       <div class="cols" id="cols"></div>
 
       <section class="docs">
-        <h2>How to use statelinter</h2>
-        <div class="docs-grid">
+        <h2>
+          <button
+            class="docs-toggle"
+            id="docs-toggle"
+            aria-expanded="true"
+            aria-controls="docs-grid"
+          >
+            How to use statelinter
+            <span class="chev" aria-hidden="true">▾</span>
+          </button>
+        </h2>
+        <div class="docs-grid" id="docs-grid">
           <div class="doc-card">
             <h3><span class="num">1</span>This console</h3>
             <p>You're looking at it — served locally from your repo:</p>
             <div class="cmd">
-              <code>statelinter --ui src/</code><button class="copy">Copy</button>
+              <code>statelinter --ui src/</code
+              ><button class="copy">Copy</button>
             </div>
             <p>
               Edit code, then hit <b>⟳ Rescan</b> — the analysis re-runs
@@ -731,7 +831,7 @@
               <tr>
                 <td>severity</td>
                 <td>
-                  High = error · Medium = warn (fails CI) · Low = info
+                  High = error · Medium = warn — both fail CI · Low = info
                   (advisory)
                 </td>
               </tr>
@@ -751,28 +851,49 @@
 
           <div class="doc-card">
             <h3><span class="num">3</span>What it understands</h3>
-            <p>Ten state surfaces plus memoization, one graph:</p>
+            <p>
+              Thirteen state surfaces across React &amp; Vue, plus memoization —
+              one graph:
+            </p>
             <table>
-              <tr>
-                <td>client</td>
-                <td>
-                  useState/useReducer · Context · Zustand · Redux/RTK slices
-                </td>
+              <tr data-stack="react">
+                <td>local<span data-stack-note> (React)</span></td>
+                <td>useState/useReducer</td>
               </tr>
-              <tr>
-                <td>server cache</td>
+              <tr data-stack="vue">
+                <td>local &amp; derived<span data-stack-note> (Vue)</span></td>
+                <td>ref/reactive · computed</td>
+              </tr>
+              <tr data-stack="react">
+                <td>stores<span data-stack-note> (React)</span></td>
+                <td>Context · Zustand · Redux/RTK slices</td>
+              </tr>
+              <tr data-stack="vue">
+                <td>stores<span data-stack-note> (Vue)</span></td>
+                <td>Pinia · Vuex · provide/inject</td>
+              </tr>
+              <tr data-stack="vue">
+                <td>options API<span data-stack-note> (Vue)</span></td>
+                <td>data() · computed · watch · local mixins</td>
+              </tr>
+              <tr data-stack="react">
+                <td>server cache<span data-stack-note> (React)</span></td>
                 <td>TanStack Query · RTK Query</td>
+              </tr>
+              <tr data-stack="vue">
+                <td>server cache<span data-stack-note> (Vue)</span></td>
+                <td>vue-query · Nuxt useAsyncData</td>
               </tr>
               <tr>
                 <td>persistence</td>
                 <td>localStorage · sessionStorage · cookies</td>
               </tr>
-              <tr>
-                <td>address bar</td>
+              <tr data-stack="react">
+                <td>address bar<span data-stack-note> (React)</span></td>
                 <td>URL search params · route params · nuqs</td>
               </tr>
-              <tr>
-                <td>memoization</td>
+              <tr data-stack="react">
+                <td>memoization<span data-stack-note> (React)</span></td>
                 <td>React.memo · useMemo · useCallback</td>
               </tr>
             </table>
@@ -791,15 +912,22 @@
               <tr>
                 <td>server-state-in-client-state</td>
                 <td>
-                  fetch + useState + useEffect hand-rolled cache, grouped per
-                  effect; prefilled form drafts soften to Low
+                  fetch +
+                  <span data-stack="react">useState + useEffect</span
+                  ><span data-stack="vue">ref + onMounted</span> hand-rolled
+                  cache, grouped per effect; prefilled form drafts soften to Low
                 </td>
               </tr>
               <tr>
                 <td>derived-state-as-state</td>
                 <td>
-                  useState recomputed from other state by a sync effect — should
-                  be a useMemo
+                  <span data-stack="react"
+                    >useState recomputed from other state by a sync effect —
+                    should be a useMemo</span
+                  ><span data-stack="vue"
+                    >ref/data recomputed from other state by a sync watcher —
+                    should be a computed()</span
+                  >
                 </td>
               </tr>
               <tr>
@@ -814,7 +942,7 @@
                   cookie shared via js-cookie/document.cookie across components
                 </td>
               </tr>
-              <tr>
+              <tr data-stack="react">
                 <td>url-state-forked</td>
                 <td>
                   useState copies of search params that go stale on back/forward
@@ -828,19 +956,31 @@
                 <td>over-globalized-state</td>
                 <td>global store/context/slice with one real consumer</td>
               </tr>
-              <tr>
+              <tr data-stack="react">
                 <td>over-broad-selector</td>
-                <td>whole-store subscriptions re-rendering on every change</td>
-              </tr>
-              <tr>
-                <td>defeated-memo</td>
                 <td>
-                  React.memo receiving inline props — the memo never holds
+                  whole-store zustand subscriptions re-rendering on every change
                 </td>
               </tr>
-              <tr>
+              <tr data-stack="react">
+                <td>defeated-memo</td>
+                <td>
+                  React.memo receiving inline props — the memo never holds<span
+                    data-stack-note
+                  >
+                    (React only)</span
+                  >
+                </td>
+              </tr>
+              <tr data-stack="react">
                 <td>pointless-memo</td>
-                <td>useMemo/useCallback with no deps or inline-literal deps</td>
+                <td>
+                  useMemo/useCallback with no deps or inline-literal deps<span
+                    data-stack-note
+                  >
+                    (React only)</span
+                  >
+                </td>
               </tr>
             </table>
           </div>
@@ -907,6 +1047,17 @@
         <button data-theme-pick="system">System</button>
         <button data-theme-pick="dark">Dark</button>
       </div>
+      <p class="sub">Accent</p>
+      <div class="seg seg-2" role="group" aria-label="Accent">
+        <button data-accent-pick="react">React</button>
+        <button data-accent-pick="vue">Vue</button>
+      </div>
+      <p class="sub" id="demos-label">Demos</p>
+      <div class="seg seg-2" role="group" aria-label="Demos" id="demos-seg">
+        <button data-demo-pick="react">React example</button>
+        <button data-demo-pick="vue">Vue example</button>
+        <button data-demo-pick="exit" id="demo-exit-btn">Your repo</button>
+      </div>
       <p class="coming">
         More settings — rule toggles, thresholds, editor scheme — coming soon.
       </p>
@@ -917,13 +1068,37 @@
 
     <script>
       let FINDINGS = __FINDINGS__;
-      let META = __META__; // { root, repo, fileCount, durationMs, command }
+      let META = __META__; // { root, repo, fileCount, durationMs, command, stack, demo, demos }
       let TERM_HTML = __TERM__;
+
+      // ── Docs cards are stack-conditional: elements tagged data-stack="react"
+      // or data-stack="vue" only show when this repo's scan detected that
+      // framework and not the other. Both (mixed) or neither (unknown) shows
+      // everything — untagged rows are framework-universal and always show.
+      // [data-stack-note] wraps a "(React)"/"(Vue)" parenthetical that's only
+      // useful when both stacks are on screen at once — it hides on any
+      // single-stack view, not just the view for the other framework. ──
+      function applyStackVisibility() {
+        const stack = (META && META.stack) || { react: false, vue: false };
+        const onlyReact = stack.react && !stack.vue;
+        const onlyVue = stack.vue && !stack.react;
+        document.querySelectorAll("[data-stack]").forEach((el) => {
+          const hide =
+            (onlyReact && el.dataset.stack === "vue") ||
+            (onlyVue && el.dataset.stack === "react");
+          el.classList.toggle("stack-hidden", hide);
+        });
+        const singleStack = onlyReact || onlyVue;
+        document.querySelectorAll("[data-stack-note]").forEach((el) => {
+          el.classList.toggle("stack-hidden", singleStack);
+        });
+      }
 
       // ── Theme ──
       const root = document.documentElement;
       const media = window.matchMedia("(prefers-color-scheme: dark)");
-      const getPref = () => localStorage.getItem("statelinter-theme") || "system";
+      const getPref = () =>
+        localStorage.getItem("statelinter-theme") || "system";
       function applyTheme() {
         const pref = getPref();
         root.dataset.theme =
@@ -945,6 +1120,114 @@
         }),
       );
       applyTheme();
+
+      // ── Accent — defaults from the detected stack (vue-only scan → green),
+      // a picker click persists to localStorage and wins forever after —
+      // except on single-stack repos, where the accent is forced to the
+      // detected framework and the other picker button is disabled. A
+      // mismatched stored pref is ignored, not deleted: it still applies
+      // on blended/unknown repos where the user is free to choose. ──
+      const stackAccent = () => {
+        const stack = (META && META.stack) || { react: false, vue: false };
+        return stack.vue && !stack.react ? "vue" : "react";
+      };
+      const forcedAccent = () => {
+        const stack = (META && META.stack) || { react: false, vue: false };
+        if (stack.react && !stack.vue) return "react";
+        if (stack.vue && !stack.react) return "vue";
+        return null;
+      };
+      const getAccentPref = () =>
+        forcedAccent() ||
+        localStorage.getItem("statelinter-accent") ||
+        stackAccent();
+      function applyAccent() {
+        const pref = getAccentPref();
+        const forced = forcedAccent();
+        root.dataset.accent = pref;
+        document.querySelectorAll("[data-accent-pick]").forEach((b) => {
+          b.setAttribute("aria-pressed", String(b.dataset.accentPick === pref));
+          const disable = forced !== null && b.dataset.accentPick !== forced;
+          b.disabled = disable;
+          b.setAttribute("aria-disabled", String(disable));
+          if (disable) {
+            b.title =
+              (b.dataset.accentPick === "vue" ? "Vue" : "React") +
+              " not detected in this repo";
+          } else {
+            b.removeAttribute("title");
+          }
+        });
+      }
+      document.querySelectorAll("[data-accent-pick]").forEach((b) =>
+        b.addEventListener("click", () => {
+          localStorage.setItem("statelinter-accent", b.dataset.accentPick);
+          applyAccent();
+        }),
+      );
+      applyAccent();
+
+      // ── Demos — buttons that reopen the console pointed at a bundled
+      // example app instead of this repo. The whole row hides when the
+      // server found neither example dir on disk (META.demos); an
+      // individual button disables when just its dir is missing. "Your
+      // repo" only appears while a demo is active (META.demo set), and the
+      // seg drops its seg-2 (2-column) class to make room for it — no dead
+      // third cell when it's hidden. Navigation is a real page load
+      // (assign, not pushState): the server embeds fresh META per request,
+      // so ?demo=react has to round-trip through it anyway. ──
+      function applyDemos() {
+        const demos = (META && META.demos) || { react: false, vue: false };
+        const label = document.getElementById("demos-label");
+        const seg = document.getElementById("demos-seg");
+        const anyDemo = demos.react || demos.vue;
+        label.classList.toggle("is-hidden", !anyDemo);
+        seg.classList.toggle("is-hidden", !anyDemo);
+        if (!anyDemo) return;
+
+        const reactBtn = document.querySelector('[data-demo-pick="react"]');
+        const vueBtn = document.querySelector('[data-demo-pick="vue"]');
+        const exitBtn = document.getElementById("demo-exit-btn");
+
+        reactBtn.disabled = !demos.react;
+        reactBtn.setAttribute("aria-disabled", String(!demos.react));
+        vueBtn.disabled = !demos.vue;
+        vueBtn.setAttribute("aria-disabled", String(!demos.vue));
+        reactBtn.setAttribute("aria-pressed", String(META.demo === "react"));
+        vueBtn.setAttribute("aria-pressed", String(META.demo === "vue"));
+
+        const inDemo = Boolean(META.demo);
+        exitBtn.classList.toggle("is-hidden", !inDemo);
+        seg.classList.toggle("seg-2", !inDemo);
+      }
+      document.querySelectorAll("[data-demo-pick]").forEach((b) =>
+        b.addEventListener("click", () => {
+          const pick = b.dataset.demoPick;
+          window.location.assign(pick === "exit" ? "/" : `/?demo=${pick}`);
+        }),
+      );
+      applyDemos();
+
+      // ── Docs collapse — persists to localStorage; default (unset) is
+      // expanded, matching the theme/accent pref-storage style above. ──
+      const docsSection = document.querySelector("section.docs");
+      const docsToggle = document.getElementById("docs-toggle");
+      const getDocsCollapsedPref = () =>
+        localStorage.getItem("statelinter-docs-collapsed") === "1";
+      function applyDocsCollapsed() {
+        const collapsed = getDocsCollapsedPref();
+        docsSection.classList.toggle("collapsed", collapsed);
+        docsToggle.setAttribute("aria-expanded", String(!collapsed));
+      }
+      docsToggle.addEventListener("click", () => {
+        const collapsed = docsSection.classList.contains("collapsed");
+        localStorage.setItem(
+          "statelinter-docs-collapsed",
+          collapsed ? "0" : "1",
+        );
+        applyDocsCollapsed();
+      });
+      applyDocsCollapsed();
 
       const dlg = document.getElementById("settings");
       document
@@ -998,9 +1281,17 @@
         ).join("");
         document.getElementById("banner-title").textContent =
           `${FINDINGS.length} state architecture findings detected.`;
+        const priorityNote =
+          counts.high > 0
+            ? "Fix High findings before merging."
+            : counts.med > 0
+              ? "Review Medium findings before merging."
+              : "Nothing blocking — Low findings are advisory only.";
         document.getElementById("banner-sub").textContent =
-          `${META.repo} — ${META.fileCount} files scanned in ${(META.durationMs / 1000).toFixed(1)}s. Review Medium findings before merging.`;
-        document.getElementById("data-badge").textContent = freshness;
+          `${META.repo} — ${META.fileCount} files scanned in ${(META.durationMs / 1000).toFixed(1)}s. ${priorityNote}`;
+        document.getElementById("data-badge").textContent = META.demo
+          ? `demo — ${META.demo} example`
+          : freshness;
         document.getElementById("term-title").textContent =
           `${META.repo} — ${META.command} — live`;
         document.getElementById("term-pre").innerHTML =
@@ -1039,6 +1330,7 @@
         }).join("");
       }
       render("live scan");
+      applyStackVisibility();
 
       document.getElementById("cols").addEventListener("click", (e) => {
         const link = e.target.closest(".file-link");
@@ -1061,7 +1353,10 @@
       });
 
       // ── Rescan: reload the app. The server re-runs the full analysis on
-      // every GET /, so a reload IS a fresh scan — one click, no CLI. ──
+      // every GET /, so a reload IS a fresh scan — one click, no CLI. This
+      // also re-applies stack-conditional docs visibility for free: a reload
+      // re-embeds a fresh META (with fresh meta.stack) and re-runs this whole
+      // script, hitting applyStackVisibility() above again. ──
       const rescanBtn = document.getElementById("rescan-btn");
       rescanBtn.addEventListener("click", () => {
         rescanBtn.disabled = true;

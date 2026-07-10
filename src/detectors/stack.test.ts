@@ -162,4 +162,146 @@ describe("stack-aware recommendations", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]!.recommendation).toContain("zustand");
   });
+
+  it("never points a Vue ref finding at RTK Query, even in an RTK-dominant graph", () => {
+    const graph = buildStateGraph([
+      // React side — RTK Query dominates the graph-wide profile.
+      {
+        path: "src/api.ts",
+        code: `
+          import { createApi } from '@reduxjs/toolkit/query/react';
+          export const api = createApi({
+            endpoints: (b) => ({
+              getUser: b.query({ query: () => '/me' }),
+              getOrders: b.query({ query: () => '/orders' }),
+            }),
+          });
+        `,
+      },
+      {
+        path: "src/Profile.tsx",
+        code: `
+          import { useGetUserQuery } from './api';
+          export function Profile() {
+            const { data } = useGetUserQuery();
+            return <span>{data?.name}</span>;
+          }
+        `,
+      },
+      // Vue side — a hand-rolled ref + onMounted + fetch cache.
+      {
+        path: "src/UserPanel.vue",
+        code: `<template>
+  <div>{{ user?.name }}</div>
+</template>
+<script setup lang="ts">
+import { ref, onMounted } from 'vue';
+const user = ref(null);
+onMounted(async () => {
+  const res = await fetch('/api/user');
+  user.value = await res.json();
+});
+</script>
+`,
+      },
+    ]);
+    const profile = computeStackProfile(graph);
+    expect(profile.serverLib).toBe("RTK Query");
+    const findings = detectServerStateInClientState(graph, profile);
+    const vueFinding = findings.find((f) => f.loc.file === "src/UserPanel.vue");
+    expect(vueFinding).toBeDefined();
+    expect(vueFinding!.recommendation).toContain("@tanstack/vue-query");
+    expect(vueFinding!.recommendation).not.toContain("RTK Query");
+  });
+
+  it("does not claim a Vue app 'already uses' TanStack when only vue-query kind is observed", () => {
+    const graph = buildStateGraph([
+      {
+        path: "Todos.vue",
+        code: `<template>
+  <ul>{{ data?.length }}</ul>
+</template>
+<script setup lang="ts">
+import { useQuery } from '@tanstack/vue-query';
+const { data } = useQuery({ queryKey: ['todos'], queryFn: fetchTodos });
+</script>
+`,
+      },
+      {
+        path: "Profile.vue",
+        code: `<template>
+  <div>{{ user?.name }}</div>
+</template>
+<script setup lang="ts">
+import { ref, onMounted } from 'vue';
+const user = ref(null);
+onMounted(async () => {
+  const res = await fetch('/api/user');
+  user.value = await res.json();
+});
+</script>
+`,
+      },
+    ]);
+    const profile = computeStackProfile(graph);
+    expect(profile.serverLib).toBe("TanStack Query");
+    const findings = detectServerStateInClientState(graph, profile);
+    const finding = findings.find(
+      (f) => f.rule === "server-state-in-client-state",
+    );
+    expect(finding).toBeDefined();
+    expect(finding!.recommendation).toContain("@tanstack/vue-query");
+    expect(finding!.recommendation).not.toContain("already uses");
+  });
+
+  it("drops the pinia persist hint for an all-React localStorage finding (mixed repo)", () => {
+    const graph = buildStateGraph([
+      // Vue side — pinia dominates the store profile.
+      {
+        path: "stores/cart.ts",
+        code: `
+          import { defineStore } from 'pinia';
+          export const useCartStore = defineStore('cart', {
+            state: () => ({ items: [] }),
+          });
+        `,
+      },
+      {
+        path: "Cart.vue",
+        code: `<template>
+  <span>{{ store.items.length }}</span>
+</template>
+<script setup lang="ts">
+import { useCartStore } from './stores/cart';
+const store = useCartStore();
+</script>
+`,
+      },
+      // React side — a localStorage key shared across two React components.
+      {
+        path: "src/A.tsx",
+        code: `
+          export function A() {
+            return <span onClick={() => localStorage.setItem('draft', 'x')}>a</span>;
+          }
+        `,
+      },
+      {
+        path: "src/B.tsx",
+        code: `
+          export function B() {
+            return <b>{localStorage.getItem('draft')}</b>;
+          }
+        `,
+      },
+    ]);
+    const profile = computeStackProfile(graph);
+    expect(profile.persistKind).toBe("pinia");
+    const findings = detectStorageAsState(graph, profile);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.recommendation).not.toContain("pinia");
+    expect(findings[0]!.recommendation).toContain(
+      "one reactive store with a persist middleware",
+    );
+  });
 });
