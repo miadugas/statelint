@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildStateGraph } from "./build.js";
 import { computeStackProfile } from "../detectors/stack.js";
+import { detectOverBroadSelector } from "../detectors/over-broad-selector.js";
 import { runStatelinter } from "../run.js";
 
 /** Pinia store in a plain .ts module — the normal layout. */
@@ -162,6 +163,29 @@ const applyCoupon = (c) => { store.coupon = c; };
     expect(kinds).toContain("writes:mutate");
   });
 
+  it("emits reads via 'subscribe' for a component-scope store.$subscribe(cb)", () => {
+    const graph = buildStateGraph([
+      { path: "stores/cart.ts", code: CART_STORE },
+      {
+        path: "Cart.vue",
+        code: SFC(`
+import { useCartStore } from './stores/cart';
+const store = useCartStore();
+store.$subscribe((mutation, state) => { console.log(state.items); });
+`),
+      },
+    ]);
+    const subscribe = graph.edges.find(
+      (e) =>
+        e.type === "reads" &&
+        e.to === "pinia:cart" &&
+        "via" in e &&
+        e.via === "subscribe",
+    );
+    expect(subscribe).toBeDefined();
+    expect(subscribe).toMatchObject({ type: "reads", via: "subscribe" });
+  });
+
   it("counts reads through composables (the fixpoint) and keeps reader counts honest", () => {
     const findings = runStatelinter([
       { path: "stores/cart.ts", code: CART_STORE },
@@ -229,6 +253,83 @@ const { items } = storeToRefs(store);
     expect(
       findings.filter((f) => f.rule === "over-globalized-state"),
     ).toHaveLength(1);
+  });
+});
+
+describe("detectOverBroadSelector — pinia $subscribe", () => {
+  it("fires on a component-scope $subscribe with the narrowing recommendation", () => {
+    const graph = buildStateGraph([
+      { path: "stores/cart.ts", code: CART_STORE },
+      {
+        path: "Cart.vue",
+        code: SFC(`
+import { useCartStore } from './stores/cart';
+const store = useCartStore();
+store.$subscribe((mutation, state) => { localStorage.setItem('cart', JSON.stringify(state)); });
+`),
+      },
+    ]);
+    const findings = detectOverBroadSelector(graph);
+    expect(findings).toHaveLength(1);
+    const f = findings[0]!;
+    expect(f.severity).toBe("warn");
+    expect(f.message).toContain("subscribes to the WHOLE 'cart' store");
+    expect(f.message).toContain("every mutation of every field");
+    expect(f.recommendation).toContain("watch(() => store.items");
+    expect(f.recommendation).toContain("pinia-plugin-persistedstate");
+  });
+
+  it("does NOT fire on a plain useCartStore() + storeToRefs bind (benign pinia proxy)", () => {
+    const graph = buildStateGraph([
+      { path: "stores/cart.ts", code: CART_STORE },
+      {
+        path: "Cart.vue",
+        code: SFC(`
+import { storeToRefs } from 'pinia';
+import { useCartStore } from './stores/cart';
+const store = useCartStore();
+const { items } = storeToRefs(store);
+`),
+      },
+    ]);
+    expect(detectOverBroadSelector(graph)).toHaveLength(0);
+  });
+
+  it("does NOT fire when the only $subscribe lives in the store definition file", () => {
+    const graph = buildStateGraph([
+      {
+        // A setup store that subscribes to another store inside its OWN
+        // definition body — never a component scope, so no edge, no finding.
+        path: "stores/cart.ts",
+        code: `
+import { defineStore } from 'pinia';
+import { useAuthStore } from './auth';
+export const useCartStore = defineStore('cart', () => {
+  const auth = useAuthStore();
+  auth.$subscribe(() => {});
+  return {};
+});
+`,
+      },
+      {
+        path: "stores/auth.ts",
+        code: `
+import { defineStore } from 'pinia';
+export const useAuthStore = defineStore('auth', {
+  state: () => ({ token: null }),
+});
+`,
+      },
+      {
+        // A real component that only binds the store — must not trip the rule.
+        path: "Cart.vue",
+        code: SFC(`
+import { useCartStore } from './stores/cart';
+const store = useCartStore();
+`),
+      },
+    ]);
+    expect(detectOverBroadSelector(graph)).toHaveLength(0);
   });
 });
 

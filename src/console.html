@@ -956,10 +956,16 @@
                 <td>over-globalized-state</td>
                 <td>global store/context/slice with one real consumer</td>
               </tr>
-              <tr data-stack="react">
+              <tr>
                 <td>over-broad-selector</td>
                 <td>
-                  whole-store zustand subscriptions re-rendering on every change
+                  <span data-stack="react"
+                    >whole-store zustand subscriptions re-rendering on every
+                    change</span
+                  ><span data-stack="vue"
+                    >component-scope pinia <code>$subscribe</code> — its
+                    callback runs on every mutation of every field</span
+                  >
                 </td>
               </tr>
               <tr data-stack="react">

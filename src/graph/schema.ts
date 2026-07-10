@@ -101,7 +101,16 @@ export interface ComponentNode {
 
 // ─── Edges ───
 
-export type ReadVia = "hook" | "selector" | "prop" | "context";
+export type ReadVia =
+  | "hook"
+  | "selector"
+  | "prop"
+  | "context"
+  // Pinia `store.$subscribe(cb)` in component/composable scope — a whole-store
+  // subscription whose callback runs on every mutation of every field. Distinct
+  // from `hook` (a benign per-property pinia proxy bind) so the over-broad
+  // detector can target subscriptions without flagging plain store binds.
+  | "subscribe";
 export type WriteVia = "setter" | "dispatch" | "mutate" | "setState";
 
 export type Edge =

@@ -2380,6 +2380,32 @@ function emitVueReactiveEdges(
       return;
     }
 
+    // store.$subscribe(cb) — a whole-store subscription: the callback fires on
+    // every mutation of every field. Emitted as a `reads` via "subscribe" only
+    // when `store` is a bound pinia store (maps.storeVars) — the same gate as
+    // $patch above. Since emitVueReactiveEdges only ever walks a component's
+    // `<script setup>` or an Options `setup()` body (never a store's own
+    // defineStore body, which has no self-binding), the edge's `from` is always
+    // a component/composable scope. A $subscribe inside a store definition file
+    // produces no such binding and no edge, so the over-broad detector can't
+    // fire on it.
+    if (
+      node.type === "CallExpression" &&
+      node.callee.type === "MemberExpression" &&
+      node.callee.object.type === "Identifier" &&
+      node.callee.property.type === "Identifier" &&
+      node.callee.property.name === "$subscribe"
+    ) {
+      const storeId = maps.storeVars.get(node.callee.object.name);
+      if (storeId) {
+        push(
+          { type: "reads", from: comp.id, to: storeId, via: "subscribe" },
+          `reads|${storeId}|subscribe`,
+        );
+      }
+      return;
+    }
+
     // provide('key', v) / inject('key') — Vue's context.
     if (
       node.type === "CallExpression" &&
