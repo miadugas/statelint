@@ -16,6 +16,10 @@ the placement mistakes that accumulate when several devs touch the same code.
 All detection is static — no build step, no browser, no instrumentation. That's what
 makes it runnable headless in CI on every PR.
 
+[![status: beta — in testing](https://img.shields.io/badge/status-beta%20%E2%80%94%20in%20testing-yellow)](#status)
+[![npm version](https://img.shields.io/npm/v/statelinter)](https://www.npmjs.com/package/statelinter)
+[![CI](https://img.shields.io/github/actions/workflow/status/miadugas/statelint/ci.yml?branch=main)](https://github.com/miadugas/statelint/actions/workflows/ci.yml)
+
 ---
 
 ## Install
@@ -206,9 +210,10 @@ Honesty is the product's brand — here's what it doesn't cover yet:
 
 ## Status
 
-Early but real: 208 tests, dogfooded on a production React PWA, a 409-file production
-Redux app, and a 31-SFC production Nuxt 3 site — where several false positives were
-found and each became a permanent guard and regression test. Not yet published to npm.
+Published as [`statelinter`](https://www.npmjs.com/package/statelinter) on npm —
+early/beta, in testing. 251 tests, dogfooded on a production React PWA, a 409-file
+production Redux app, and a 31-SFC production Nuxt 3 site — where several false
+positives were found and each became a permanent guard and regression test.
 
 Docs: [positioning brief](docs/positioning.md) · [detector map](docs/detector-map.md)
 
