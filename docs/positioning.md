@@ -9,7 +9,7 @@ Query, and local `useState`. Modern Vue apps run the same rot with `ref`/`reacti
 Pinia, Vuex, provide/inject, vue-query, and Nuxt's data-fetching composables. No single
 dev owns the whole picture in either ecosystem. Over time, with multiple hands in the
 code, state placement decays: server data cached in three places, props drilled four
-levels, "global" state read by one component. It becomes an albatross — and no tool
+levels, "global" state read by one component. It becomes an albatross — and no one tool
 tells you, because every tool inspects one silo, in one framework.
 
 ## The vacant lane

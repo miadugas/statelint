@@ -1,0 +1,1183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>statelinter — an architecture linter for React and Vue state</title>
+    <meta
+      name="description"
+      content="A source-of-truth auditor for frontend state. statelinter models Context, Redux, Zustand, TanStack Query, Pinia, Vuex, provide/inject, storage, URL and cookies as one graph and flags placement mistakes on every PR — React and Vue, static, headless in CI."
+    />
+    <link rel="canonical" href="https://miadugas.github.io/statelint/" />
+
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:title"
+      content="statelinter — an architecture linter for React and Vue state"
+    />
+    <meta
+      property="og:description"
+      content="Answers is your state architecture right — and what should it be? Across every state tool, on every PR. React and Vue, static, headless in CI."
+    />
+    <meta property="og:url" content="https://miadugas.github.io/statelint/" />
+    <meta
+      property="og:image"
+      content="https://miadugas.github.io/statelint/assets/hero-dark-react.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="statelinter — an architecture linter for React and Vue state"
+    />
+    <meta
+      name="twitter:description"
+      content="A source-of-truth auditor for frontend state — across every state tool, on every PR."
+    />
+    <meta
+      name="twitter:image"
+      content="https://miadugas.github.io/statelint/assets/hero-dark-react.png"
+    />
+
+    <style>
+      /* ─── Tokens (dark — reused from statelinter's own console) ──────── */
+      :root {
+        --sans:
+          ui-rounded, -apple-system, BlinkMacSystemFont, "SF Pro Rounded",
+          "SF Pro Text", "Segoe UI", sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Code", monospace;
+        --radius-card: 20px;
+        --radius-pill: 999px;
+        --maxw: 1080px;
+
+        --page: #101113;
+        --page-glow: radial-gradient(
+          1200px 620px at 78% -8%,
+          rgba(88, 166, 255, 0.08),
+          transparent 62%
+        );
+        --surface: #1a1c1f;
+        --surface-tint: #1e2024;
+        --edge: #26282d;
+        --edge-strong: #34373d;
+        --text: #ecedee;
+        --text-2: #a6a9ad;
+        --text-3: #6e7176;
+        --chip-high-bg: #3a1418;
+        --chip-high-fg: #ff8a8a;
+        --chip-med-bg: #362a0d;
+        --chip-med-fg: #f0c04d;
+        --chip-low-bg: #0d2f35;
+        --chip-low-fg: #6fd4e0;
+        --shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+        --term-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+
+        /* Dual accent — dark shades */
+        --react: #58a6ff;
+        --react-soft: rgba(88, 166, 255, 0.14);
+        --vue: #42b883;
+        --vue-soft: rgba(66, 184, 131, 0.14);
+      }
+
+      /* ─── Reset / base ───────────────────────────────────────────────── */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        font-family: var(--sans);
+        color: var(--text);
+        background: var(--page-glow), var(--page);
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      a {
+        color: var(--react);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      code,
+      kbd,
+      pre {
+        font-family: var(--mono);
+      }
+      img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+        margin: 0;
+      }
+      ::selection {
+        background: var(--react-soft);
+      }
+
+      .wrap {
+        max-width: var(--maxw);
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+
+      /* ─── Nav ────────────────────────────────────────────────────────── */
+      header.nav {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        backdrop-filter: saturate(1.2) blur(10px);
+        background: color-mix(in srgb, var(--page) 82%, transparent);
+        border-bottom: 1px solid var(--edge);
+      }
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 60px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--text);
+      }
+      .brand:hover {
+        text-decoration: none;
+      }
+      .logo-badge {
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(150deg, var(--react), var(--vue));
+        color: #fff;
+        font-size: 14px;
+        box-shadow: var(--shadow);
+      }
+      .nav-links {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        font-size: 14px;
+      }
+      .nav-links a {
+        color: var(--text-2);
+      }
+      .nav-links a:hover {
+        color: var(--text);
+        text-decoration: none;
+      }
+      .nav-links .ext {
+        color: var(--text);
+        font-weight: 600;
+      }
+      @media (max-width: 620px) {
+        .nav-links a.hide-sm {
+          display: none;
+        }
+      }
+
+      /* ─── Hero ───────────────────────────────────────────────────────── */
+      .hero {
+        padding: 76px 0 48px;
+        text-align: center;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12.5px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        padding: 5px 12px;
+        border-radius: var(--radius-pill);
+        background: var(--chip-med-bg);
+        color: var(--chip-med-fg);
+        border: 1px solid
+          color-mix(in srgb, var(--chip-med-fg) 24%, transparent);
+      }
+      .badge .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      h1.headline {
+        font-size: clamp(30px, 5.4vw, 52px);
+        font-weight: 800;
+        margin: 22px auto 0;
+        max-width: 15ch;
+      }
+      h1.headline .react {
+        color: var(--react);
+      }
+      h1.headline .vue {
+        color: var(--vue);
+      }
+      .subhead {
+        margin: 20px auto 0;
+        max-width: 62ch;
+        color: var(--text-2);
+        font-size: clamp(15px, 1.9vw, 18px);
+      }
+      .cta {
+        margin-top: 30px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        align-items: center;
+      }
+      .install {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        font-family: var(--mono);
+        font-size: 14.5px;
+        background: var(--surface);
+        border: 1px solid var(--edge-strong);
+        border-radius: var(--radius-pill);
+        padding: 10px 8px 10px 18px;
+        color: var(--text);
+        box-shadow: var(--shadow);
+      }
+      .install .prompt {
+        color: var(--vue);
+      }
+      .install button {
+        font-family: var(--sans);
+        font-size: 12.5px;
+        font-weight: 600;
+        border: none;
+        border-radius: var(--radius-pill);
+        padding: 6px 12px;
+        background: linear-gradient(
+          180deg,
+          var(--react),
+          color-mix(in srgb, var(--react) 78%, #000)
+        );
+        color: #fff;
+        cursor: pointer;
+      }
+      .install button:active {
+        transform: translateY(1px);
+      }
+      .btn-ghost {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        font-size: 14.5px;
+        padding: 11px 18px;
+        border-radius: var(--radius-pill);
+        border: 1px solid var(--edge-strong);
+        background: var(--surface);
+        color: var(--text);
+        box-shadow: var(--shadow);
+      }
+      .btn-ghost:hover {
+        text-decoration: none;
+        border-color: var(--react);
+      }
+
+      /* ─── Section scaffold ───────────────────────────────────────────── */
+      section.band {
+        padding: 58px 0;
+        border-top: 1px solid var(--edge);
+      }
+      .eyebrow {
+        font-size: 12.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--text-3);
+      }
+      .band--react .eyebrow {
+        color: var(--react);
+      }
+      .band--vue .eyebrow {
+        color: var(--vue);
+      }
+      h2.title {
+        font-size: clamp(24px, 3.4vw, 34px);
+        font-weight: 800;
+        margin-top: 10px;
+        max-width: 22ch;
+      }
+      .lede {
+        margin-top: 16px;
+        max-width: 68ch;
+        color: var(--text-2);
+        font-size: clamp(15px, 1.8vw, 17px);
+      }
+      .lede strong {
+        color: var(--text);
+        font-weight: 700;
+      }
+
+      /* ─── Screenshot showcase ────────────────────────────────────────── */
+      .shots {
+        margin-top: 34px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
+      }
+      @media (max-width: 760px) {
+        .shots {
+          grid-template-columns: 1fr;
+        }
+      }
+      figure.shot {
+        margin: 0;
+        border-radius: var(--radius-card);
+        border: 1px solid var(--edge-strong);
+        background: var(--surface);
+        box-shadow: var(--term-shadow);
+        overflow: hidden;
+      }
+      figure.shot .frame {
+        overflow: hidden;
+        max-width: 100%;
+      }
+      figure.shot img {
+        width: 100%;
+        display: block;
+      }
+      figure.shot figcaption {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        padding: 13px 18px 15px;
+        font-size: 13.5px;
+        color: var(--text-2);
+        border-top: 1px solid var(--edge);
+      }
+      figcaption .tag {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        padding: 2px 8px;
+        border-radius: var(--radius-pill);
+        white-space: nowrap;
+      }
+      .tag.react {
+        background: var(--react-soft);
+        color: var(--react);
+      }
+      .tag.vue {
+        background: var(--vue-soft);
+        color: var(--vue);
+      }
+
+      /* ─── Provenance / callouts ──────────────────────────────────────── */
+      .prov {
+        margin-top: 30px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+      @media (max-width: 760px) {
+        .prov {
+          grid-template-columns: 1fr;
+        }
+      }
+      .prov .card {
+        background: var(--surface);
+        border: 1px solid var(--edge);
+        border-radius: var(--radius-card);
+        padding: 20px 20px 22px;
+        box-shadow: var(--shadow);
+      }
+      .prov .card h3 {
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .prov .card p {
+        margin: 10px 0 0;
+        font-size: 14px;
+        color: var(--text-2);
+      }
+      .prov .card code {
+        font-size: 12.5px;
+        background: var(--surface-tint);
+        border: 1px solid var(--edge);
+        padding: 1px 5px;
+        border-radius: 6px;
+        color: var(--text);
+      }
+      .prov .card:nth-child(1) {
+        border-top: 3px solid var(--react);
+      }
+      .prov .card:nth-child(2) {
+        border-top: 3px solid var(--vue);
+      }
+      .prov .card:nth-child(3) {
+        border-top: 3px solid var(--edge-strong);
+      }
+      .kicker {
+        margin-top: 22px;
+        font-size: 15px;
+        color: var(--text-2);
+        max-width: 74ch;
+      }
+      .kicker strong {
+        color: var(--text);
+      }
+
+      /* ─── Rules table ────────────────────────────────────────────────── */
+      .table-scroll {
+        margin-top: 28px;
+        overflow-x: auto;
+        border: 1px solid var(--edge);
+        border-radius: var(--radius-card);
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+      table.rules {
+        border-collapse: collapse;
+        width: 100%;
+        min-width: 640px;
+        font-size: 14px;
+      }
+      table.rules th,
+      table.rules td {
+        text-align: left;
+        padding: 13px 18px;
+        vertical-align: top;
+        border-bottom: 1px solid var(--edge);
+      }
+      table.rules thead th {
+        font-size: 11.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-3);
+        font-weight: 700;
+        background: var(--surface-tint);
+        position: sticky;
+        top: 0;
+      }
+      table.rules tbody tr:last-child td {
+        border-bottom: none;
+      }
+      table.rules td.rule code {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text);
+        white-space: nowrap;
+      }
+      table.rules td.fires {
+        color: var(--text-2);
+      }
+      table.rules td.rec {
+        color: var(--text-2);
+      }
+      .only {
+        font-family: var(--sans);
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        padding: 1px 6px;
+        border-radius: var(--radius-pill);
+        margin-left: 6px;
+        vertical-align: middle;
+      }
+      .only.react {
+        background: var(--react-soft);
+        color: var(--react);
+      }
+
+      /* ─── Honesty ────────────────────────────────────────────────────── */
+      .honesty-grid {
+        margin-top: 28px;
+        display: grid;
+        grid-template-columns: 1.1fr 1fr;
+        gap: 24px;
+        align-items: start;
+      }
+      @media (max-width: 760px) {
+        .honesty-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .contract {
+        background: var(--surface);
+        border: 1px solid var(--edge);
+        border-left: 3px solid var(--vue);
+        border-radius: var(--radius-card);
+        padding: 22px 24px;
+        box-shadow: var(--shadow);
+      }
+      .contract h3 {
+        font-size: 17px;
+        font-weight: 800;
+      }
+      .contract p {
+        margin: 12px 0 0;
+        color: var(--text-2);
+        font-size: 14.5px;
+      }
+      ul.limits {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 12px;
+      }
+      ul.limits li {
+        background: var(--surface);
+        border: 1px solid var(--edge);
+        border-radius: 14px;
+        padding: 15px 18px;
+        font-size: 14px;
+        color: var(--text-2);
+      }
+      ul.limits li b {
+        color: var(--text);
+        font-weight: 700;
+      }
+
+      /* ─── Quickstart ─────────────────────────────────────────────────── */
+      .terminal {
+        margin-top: 26px;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid var(--edge-strong);
+        box-shadow: var(--term-shadow);
+        background: #141518;
+      }
+      .term-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 16px;
+        background: #1e2024;
+        border-bottom: 1px solid #2a2d32;
+      }
+      .term-bar .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+      }
+      .dot.r {
+        background: #ff5f57;
+      }
+      .dot.y {
+        background: #febc2e;
+      }
+      .dot.g {
+        background: #28c840;
+      }
+      .term-title {
+        margin-left: 10px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: #6e7176;
+      }
+      pre.term {
+        margin: 0;
+        padding: 20px 22px;
+        overflow-x: auto;
+        font-size: 13.5px;
+        line-height: 1.75;
+        color: #d7d9dc;
+      }
+      pre.term .c {
+        color: #6e7176;
+      }
+      pre.term .g {
+        color: var(--vue);
+      }
+      pre.term .b {
+        color: var(--react);
+      }
+      pre.term .p {
+        color: #6e7176;
+      }
+      .exit {
+        margin-top: 20px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+      @media (max-width: 620px) {
+        .exit {
+          grid-template-columns: 1fr;
+        }
+      }
+      .exit .e {
+        background: var(--surface);
+        border: 1px solid var(--edge);
+        border-radius: 14px;
+        padding: 16px 18px;
+        box-shadow: var(--shadow);
+      }
+      .exit .e .code {
+        font-family: var(--mono);
+        font-weight: 700;
+        font-size: 15px;
+      }
+      .exit .e0 .code {
+        color: var(--vue);
+      }
+      .exit .e1 .code {
+        color: var(--chip-med-fg);
+      }
+      .exit .e2 .code {
+        color: var(--text-2);
+      }
+      .exit .e p {
+        margin: 6px 0 0;
+        font-size: 13.5px;
+        color: var(--text-2);
+      }
+
+      /* ─── Footer ─────────────────────────────────────────────────────── */
+      footer {
+        border-top: 1px solid var(--edge);
+        padding: 40px 0 56px;
+        margin-top: 12px;
+      }
+      .foot-inner {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px 28px;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .foot-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 22px;
+        font-size: 14px;
+      }
+      .foot-links a {
+        color: var(--text-2);
+      }
+      .foot-links a:hover {
+        color: var(--text);
+        text-decoration: none;
+      }
+      .foot-meta {
+        font-size: 13px;
+        color: var(--text-3);
+      }
+      .foot-meta .l {
+        color: var(--react);
+      }
+      .foot-meta .r {
+        color: var(--vue);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href="#top">
+          <span class="logo-badge">▲</span> statelinter
+        </a>
+        <nav class="nav-links">
+          <a class="hide-sm" href="#problem">Problem</a>
+          <a class="hide-sm" href="#rules">Rules</a>
+          <a class="hide-sm" href="#honesty">Honesty</a>
+          <a class="hide-sm" href="#quickstart">Quickstart</a>
+          <a class="ext" href="https://github.com/miadugas/statelint"
+            >GitHub ↗</a
+          >
+        </nav>
+      </div>
+    </header>
+
+    <main id="top">
+      <!-- HERO -->
+      <section class="hero">
+        <div class="wrap">
+          <span class="badge"><span class="dot"></span> beta — in testing</span>
+          <h1 class="headline">
+            An architecture linter for
+            <span class="react">React</span> and
+            <span class="vue">Vue</span> state
+          </h1>
+          <p class="subhead">
+            Across every state tool, on every PR. Every existing tool answers
+            <em>“what is happening?”</em> statelinter answers
+            <em>“is your state architecture right — and what should it be?”</em>
+          </p>
+          <div class="cta">
+            <span class="install">
+              <span
+                ><span class="prompt">$</span>&nbsp; npm i -D statelinter</span
+              >
+              <button id="copy-install" type="button">Copy</button>
+            </span>
+            <a class="btn-ghost" href="https://github.com/miadugas/statelint"
+              >GitHub</a
+            >
+            <a
+              class="btn-ghost"
+              href="https://www.npmjs.com/package/statelinter"
+              >npm</a
+            >
+          </div>
+        </div>
+      </section>
+
+      <!-- PROBLEM -->
+      <section class="band band--react" id="problem">
+        <div class="wrap">
+          <p class="eyebrow">The problem</p>
+          <h2 class="title">
+            State placement decays. And no one tool tells you.
+          </h2>
+          <p class="lede">
+            Modern React apps spread state across Context, Redux/RTK, RTK Query,
+            Zustand, TanStack Query, and local <code>useState</code>. Modern Vue
+            apps run the same rot with <code>ref</code>/<code>reactive</code>,
+            Pinia, Vuex, provide/inject, and Nuxt's data-fetching composables.
+            No single dev owns the whole picture in either ecosystem. Over time,
+            with multiple hands in the code, state placement decays: server data
+            cached in three places, props drilled four levels, “global” state
+            read by one component. It becomes an albatross — every tool inspects
+            one silo, in one framework.
+          </p>
+          <p class="kicker">
+            statelinter isn't a profiler. It's a
+            <strong>source-of-truth auditor</strong> that sits
+            <em>above</em> the per-library devtools: it models every state
+            source in your app as one graph and flags the placement mistakes
+            that accumulate when several devs touch the same code. All detection
+            is static — no build step, no browser, no instrumentation. That's
+            what makes it runnable headless in CI on every PR.
+          </p>
+        </div>
+      </section>
+
+      <!-- SHOWCASE -->
+      <section class="band band--vue">
+        <div class="wrap">
+          <p class="eyebrow">Receipts</p>
+          <h2 class="title">The console, on two real example apps.</h2>
+          <p class="lede">
+            Terminal output, collapsible severity columns, and full instructions
+            in one page. Edit code, hit <strong>Rescan</strong> — the analysis
+            re-runs in-process. Everything below is a real capture, not a
+            mockup.
+          </p>
+          <div class="shots">
+            <figure class="shot">
+              <div class="frame">
+                <img
+                  src="assets/hero-dark-react.png"
+                  width="1280"
+                  height="900"
+                  alt="statelinter console in dark theme scanning a React example app — a server-state-in-client-state finding in the terminal and Medium column"
+                  loading="eager"
+                />
+              </div>
+              <figcaption>
+                <span class="tag react">React</span>
+                <span
+                  >Stack detection sets the accent — React blue, one real
+                  finding.</span
+                >
+              </figcaption>
+            </figure>
+
+            <figure class="shot">
+              <div class="frame">
+                <img
+                  src="assets/light-vue.png"
+                  width="1280"
+                  height="900"
+                  alt="statelinter console in light parchment theme scanning a Vue example app — an over-globalized-state finding on a Pinia store"
+                  loading="lazy"
+                />
+              </div>
+              <figcaption>
+                <span class="tag vue">Vue</span>
+                <span
+                  >The console's light parchment theme, Vue green — an
+                  over-globalized Pinia store.</span
+                >
+              </figcaption>
+            </figure>
+
+            <figure class="shot">
+              <div class="frame">
+                <img
+                  src="assets/docs-conditional.png"
+                  width="1280"
+                  height="900"
+                  alt="statelinter in-console docs, showing Vue-only rows: ref/reactive, Pinia, Vuex, provide/inject, and Nuxt useAsyncData"
+                  loading="lazy"
+                />
+              </div>
+              <figcaption>
+                <span class="tag vue">Vue</span>
+                <span
+                  >Docs adapt to the stack — the Vue run surfaces Vue-only
+                  surfaces and rules.</span
+                >
+              </figcaption>
+            </figure>
+
+            <figure class="shot">
+              <div class="frame">
+                <img
+                  src="assets/findings-card.png"
+                  width="843"
+                  height="629"
+                  alt="A Medium-severity finding card — server-state-in-client-state, with file, line, rule and the named fix"
+                  loading="lazy"
+                />
+              </div>
+              <figcaption>
+                <span class="tag react">React</span>
+                <span
+                  >A real finding — file, rule, and the named refactor. Medium
+                  fails CI.</span
+                >
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- WHY THESE RULES -->
+      <section class="band band--react">
+        <div class="wrap">
+          <p class="eyebrow">Why these rules</p>
+          <h2 class="title">statelinter invented none of its opinions.</h2>
+          <p class="lede">
+            It made the ecosystem's existing canon enforceable — rules that
+            already live in docs and blog posts, that nobody runs.
+          </p>
+          <div class="prov">
+            <div class="card">
+              <h3>Framework canon</h3>
+              <p>
+                <code>derived-state-as-state</code> is React's “You Might Not
+                Need an Effect” and Vue's computed-over-watchers docs, as a
+                check instead of a paragraph.
+                <code>server-state-in-client-state</code> is the TanStack/TkDodo
+                server-state-is-not-client-state doctrine.
+                <code>prop-drilling</code> is React's “Passing Data Deeply” and
+                Vue's provide/inject guidance.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Community doctrine</h3>
+              <p>
+                <code>over-globalized-state</code> is state colocation, Kent C.
+                Dodds's argument made structural.
+                <code>over-broad-selector</code> is the Redux Style Guide and
+                Zustand's own selector guidance.
+                <code>multiple-sources-of-truth</code> is the
+                single-source-of-truth principle every store library preaches
+                and none of them check for you.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Dogfood hardening</h3>
+              <p>
+                Every guard and hedge — accumulator setters excluded, prefilled
+                drafts softened, updater-form
+                <code>set(prev =&gt; …)</code> excluded — came from a false
+                positive on a production codebase and became a permanent
+                regression test.
+              </p>
+            </div>
+          </div>
+          <p class="kicker">
+            The rules aren't new. What's new is <strong>where they run</strong>:
+            cross-file, cross-library, in CI — not in a doc nobody rereads
+            before they ship.
+          </p>
+        </div>
+      </section>
+
+      <!-- RULES TABLE -->
+      <section class="band band--vue" id="rules">
+        <div class="wrap">
+          <p class="eyebrow">The catalogue</p>
+          <h2 class="title">Eleven rules, across thirteen state surfaces.</h2>
+          <p class="lede">
+            Recommendations are stack- and framework-aware: statelinter names
+            the dominant tool your app leans on and phrases the fix in the
+            origin framework's idiom.
+          </p>
+          <div class="table-scroll">
+            <table class="rules">
+              <thead>
+                <tr>
+                  <th>Rule</th>
+                  <th>Fires when</th>
+                  <th>Recommends</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="rule"><code>multiple-sources-of-truth</code></td>
+                  <td class="fires">
+                    one entity owned by 2+ global sources (context / store /
+                    provide-inject / storage / URL / cookie), or server-cached
+                    twice
+                  </td>
+                  <td class="rec">Consolidate on one owner</td>
+                </tr>
+                <tr>
+                  <td class="rule">
+                    <code>server-state-in-client-state</code>
+                  </td>
+                  <td class="fires">
+                    <code>useState</code>/<code>ref</code> fed by fetch/await in
+                    an effect or lifecycle hook; prefilled drafts soften to Low
+                  </td>
+                  <td class="rec">
+                    TanStack / RTK Query, or Nuxt's useAsyncData/useFetch
+                  </td>
+                </tr>
+                <tr>
+                  <td class="rule"><code>derived-state-as-state</code></td>
+                  <td class="fires">
+                    <code>useState</code>/<code>ref</code> recomputed from other
+                    state by a synchronous effect/watcher
+                  </td>
+                  <td class="rec">
+                    <code>useMemo</code>/<code>computed</code> — delete the
+                    state + effect
+                  </td>
+                </tr>
+                <tr>
+                  <td class="rule"><code>storage-as-state</code></td>
+                  <td class="fires">
+                    a localStorage/sessionStorage key read+written across 2+
+                    components (non-reactive)
+                  </td>
+                  <td class="rec">
+                    own it in one store with <code>persist</code>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="rule"><code>cookie-as-state</code></td>
+                  <td class="fires">
+                    a cookie shared across components via js-cookie /
+                    react-cookie /
+                    <code>document.cookie</code>
+                  </td>
+                  <td class="rec">one reactive owner; persist from there</td>
+                </tr>
+                <tr>
+                  <td class="rule"><code>url-state-forked</code></td>
+                  <td class="fires">
+                    a <code>useState</code> copy of a URL search param that goes
+                    stale on back/forward
+                  </td>
+                  <td class="rec">read the param directly</td>
+                </tr>
+                <tr>
+                  <td class="rule"><code>prop-drilling</code></td>
+                  <td class="fires">
+                    a JSX prop or Vue template bind passes through N components
+                    that only forward it (cross-file, blind hops named)
+                  </td>
+                  <td class="rec">
+                    Context/store, or composition (children / slots)
+                  </td>
+                </tr>
+                <tr>
+                  <td class="rule"><code>over-globalized-state</code></td>
+                  <td class="fires">
+                    a global store or context/provide-inject with exactly one
+                    real consumer; dead provided values
+                  </td>
+                  <td class="rec">colocate / delete</td>
+                </tr>
+                <tr>
+                  <td class="rule"><code>over-broad-selector</code></td>
+                  <td class="fires">
+                    bare <code>useStore()</code> or identity selector on a
+                    zustand store, or a component-scope
+                    <code>$subscribe</code> on a whole pinia store
+                  </td>
+                  <td class="rec">
+                    narrow the selector; <code>watch</code> a field, or a
+                    persist plugin
+                  </td>
+                </tr>
+                <tr>
+                  <td class="rule">
+                    <code>defeated-memo</code
+                    ><span class="only react">React</span>
+                  </td>
+                  <td class="fires">
+                    <code>React.memo</code> receiving inline
+                    object/array/function props — the memo never holds
+                  </td>
+                  <td class="rec">stabilize the props, or drop the memo</td>
+                </tr>
+                <tr>
+                  <td class="rule">
+                    <code>pointless-memo</code
+                    ><span class="only react">React</span>
+                  </td>
+                  <td class="fires">
+                    <code>useMemo</code>/<code>useCallback</code> with no deps
+                    array, or an inline literal in the deps
+                  </td>
+                  <td class="rec">fix the deps, or compute inline</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- HONESTY -->
+      <section class="band band--react" id="honesty">
+        <div class="wrap">
+          <p class="eyebrow">Honesty is the brand</p>
+          <h2 class="title">Silence beats lying.</h2>
+          <p class="lede">
+            A finding you can't trust is worse than no finding. statelinter
+            would rather stay quiet than guess — and it's explicit about what it
+            doesn't cover yet.
+          </p>
+          <div class="honesty-grid">
+            <div class="contract">
+              <h3>The trust contract</h3>
+              <p>
+                <b>Never guess.</b> Generic entity names (<code>data</code>,
+                <code>state</code>, <code>error</code>) are suppressed, not
+                matched. Dynamic query/storage keys get no source.
+                Unclassifiable state is <code>unknown</code> and never
+                auto-recommended on.
+              </p>
+              <p>
+                <b>Silence beats lying.</b> Single-owner storage, accumulator
+                setters, event-driven effects, and updater-form
+                <code>set(prev =&gt; …)</code> are all excluded. When a scan
+                hits a Vue component shape it can't resolve, it says so on
+                stderr and suppresses “exactly one reader” findings for that run
+                — an undercounted reader is a missed finding, but a false “only
+                one reader” claim would be worse.
+              </p>
+            </div>
+            <ul class="limits">
+              <li>
+                <b>vue-router URL state isn't modeled yet.</b>
+                <code>useRoute().query</code> isn't tracked; the React URL
+                adapters (<code>useSearchParams</code>, nuqs) are.
+              </li>
+              <li>
+                <b>React class components aren't modeled.</b> Hooks-era React
+                only.
+              </li>
+              <li>
+                <b>Some Vue Options API escape hatches are unresolved.</b>
+                <code>extends</code>, package-imported or dynamic mixin lists,
+                and unrecognized export shapes are flagged on stderr rather than
+                guessed at.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- QUICKSTART -->
+      <section class="band band--vue" id="quickstart">
+        <div class="wrap">
+          <p class="eyebrow">Quickstart</p>
+          <h2 class="title">Point it at a folder. Gate a PR.</h2>
+          <p class="lede">
+            Works on <code>.tsx</code> / <code>.jsx</code> / <code>.ts</code> /
+            <code>.js</code> / <code>.vue</code>. Requires Node 20+. Test,
+            story, and config files are skipped automatically.
+          </p>
+          <div class="terminal">
+            <div class="term-bar">
+              <span class="dot r"></span><span class="dot y"></span
+              ><span class="dot g"></span>
+              <span class="term-title">statelinter — quickstart</span>
+            </div>
+            <pre class="term"><span class="c"># install</span>
+<span class="p">$</span> npm i -D <span class="g">statelinter</span>
+
+<span class="c"># scan — pretty output, exit 1 on Medium/High findings (the CI gate)</span>
+<span class="p">$</span> npx <span class="g">statelinter</span> src/
+
+<span class="c"># serve the interactive findings console (one-click Rescan, binds 127.0.0.1)</span>
+<span class="p">$</span> npx <span class="g">statelinter</span> <span class="b">--ui</span> src/   <span class="c">→ http://localhost:8734</span>
+
+<span class="c"># machine-readable, or tune the prop-drilling threshold</span>
+<span class="p">$</span> npx <span class="g">statelinter</span> src/ <span class="b">--json</span>
+<span class="p">$</span> npx <span class="g">statelinter</span> src/ <span class="b">--min-drill</span> 3</pre>
+          </div>
+          <div class="exit">
+            <div class="e e0">
+              <span class="code">exit 0</span>
+              <p>clean, or only Low (advisory) findings</p>
+            </div>
+            <div class="e e1">
+              <span class="code">exit 1</span>
+              <p>Medium/High findings — fails CI on purpose</p>
+            </div>
+            <div class="e e2">
+              <span class="code">exit 2</span>
+              <p>usage error (bad flag, no files found)</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap foot-inner">
+        <div class="foot-links">
+          <a href="https://github.com/miadugas/statelint">GitHub</a>
+          <a href="https://www.npmjs.com/package/statelinter">npm</a>
+          <a href="https://github.com/miadugas/statelint/issues">Issues</a>
+          <a
+            href="https://github.com/miadugas/statelint/blob/main/docs/positioning.md"
+            >Positioning</a
+          >
+        </div>
+        <div class="foot-meta">
+          MIT · an architecture linter for <span class="l">React</span> and
+          <span class="r">Vue</span> state
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      const btn = document.getElementById("copy-install");
+      if (btn) {
+        btn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText("npm i -D statelinter");
+            const prev = btn.textContent;
+            btn.textContent = "Copied";
+            setTimeout(() => (btn.textContent = prev), 1400);
+          } catch (e) {
+            /* clipboard unavailable — no-op */
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
