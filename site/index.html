@@ -330,6 +330,33 @@
         font-weight: 700;
       }
 
+      /* ─── Graph visual ───────────────────────────────────────────────── */
+      .graph-panel {
+        margin-top: 30px;
+        background: var(--surface);
+        border: 1px solid var(--edge);
+        border-radius: var(--radius-card);
+        box-shadow: var(--shadow);
+        padding: 20px 18px 16px;
+        overflow-x: auto;
+      }
+      .graph-panel svg {
+        display: block;
+        width: 100%;
+        min-width: 760px;
+        height: auto;
+        font-family: var(--mono);
+      }
+      .graph-caption {
+        margin-top: 12px;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--text-3);
+      }
+      .graph-caption code {
+        color: var(--text-2);
+      }
+
       /* ─── Screenshot showcase ────────────────────────────────────────── */
       .shots {
         margin-top: 34px;
@@ -647,6 +674,58 @@
         color: var(--text-2);
       }
 
+      /* ─── Did we miss anything ───────────────────────────────────────── */
+      .miss {
+        margin-top: 30px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
+      }
+      @media (max-width: 760px) {
+        .miss {
+          grid-template-columns: 1fr;
+        }
+      }
+      .miss-card {
+        background: var(--surface);
+        border: 1px solid var(--edge);
+        border-radius: var(--radius-card);
+        padding: 24px 26px 26px;
+      }
+      .miss-card h3 {
+        font-size: 17px;
+        font-weight: 700;
+      }
+      .miss-card p {
+        margin-top: 10px;
+        font-size: 14.5px;
+        color: var(--text-2);
+      }
+      .miss-card ul {
+        margin: 10px 0 0;
+        padding-left: 18px;
+        font-size: 14.5px;
+        color: var(--text-2);
+      }
+      .miss-card li + li {
+        margin-top: 6px;
+      }
+      .miss-links {
+        margin-top: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .miss-links a {
+        color: var(--text);
+      }
+      .miss-links a:hover {
+        text-decoration: none;
+        color: var(--vue);
+      }
+
       /* ─── Footer ─────────────────────────────────────────────────────── */
       footer {
         border-top: 1px solid var(--edge);
@@ -696,6 +775,7 @@
           <a class="hide-sm" href="#rules">Rules</a>
           <a class="hide-sm" href="#honesty">Honesty</a>
           <a class="hide-sm" href="#quickstart">Quickstart</a>
+          <a class="hide-sm" href="#contribute">Contribute</a>
           <a class="ext" href="https://github.com/miadugas/statelint"
             >GitHub ↗</a
           >
@@ -767,8 +847,313 @@
         </div>
       </section>
 
+      <!-- THE MODEL -->
+      <section class="band band--vue" id="model">
+        <div class="wrap">
+          <p class="eyebrow">The model</p>
+          <h2 class="title">Every state source in your app — one graph.</h2>
+          <p class="lede">
+            Every state tool as one graph — each source classified
+            <code>server-cache</code> / <code>global-client</code> /
+            <code>local</code> / <code>derived</code>, every read and write an
+            edge. Detectors are pure graph queries, not per-file lint.
+          </p>
+          <!-- This SVG is the literal scan of examples/mixed-app — kinds,
+               names, edges, and the single finding are pinned by
+               src/graph/site-graph.test.ts. Change one, change both. -->
+          <div class="graph-panel">
+            <svg
+              viewBox="0 0 1060 448"
+              xmlns="http://www.w3.org/2000/svg"
+              role="img"
+              aria-labelledby="graph-title graph-desc"
+            >
+              <title id="graph-title">
+                statelinter's state graph on a small mixed React and Vue app
+              </title>
+              <desc id="graph-desc">
+                Five components (Header.tsx, Profile.tsx, Cart.tsx in React;
+                Badge.vue, Checkout.vue in Vue) connected by read and write
+                edges to six state sources: zustand useUiStore, url-param tab,
+                useState user, tanstack-query todos, pinia cart, and
+                local-storage "cart". Badge.vue reads the pinia cart store,
+                Checkout.vue reads and writes it, and Cart.tsx reads and writes
+                the local-storage "cart" key. Both cart sources are highlighted
+                in warning amber with a multiple-sources-of-truth finding tag,
+                because two global sources own the same cart entity.
+              </desc>
+
+              <!-- legend -->
+              <g font-size="12" fill="var(--text-3)">
+                <line
+                  x1="16"
+                  y1="24"
+                  x2="44"
+                  y2="24"
+                  stroke="var(--text-3)"
+                  stroke-opacity="0.55"
+                  stroke-width="1.5"
+                />
+                <text x="52" y="28">read</text>
+                <line
+                  x1="104"
+                  y1="24"
+                  x2="132"
+                  y2="24"
+                  stroke="var(--text-2)"
+                  stroke-opacity="0.75"
+                  stroke-width="1.5"
+                  stroke-dasharray="5 4"
+                />
+                <text x="140" y="28">write</text>
+              </g>
+
+              <!-- edges: reads (solid, subtle) -->
+              <g
+                fill="none"
+                stroke="var(--text-3)"
+                stroke-opacity="0.55"
+                stroke-width="1.5"
+              >
+                <!-- Header.tsx reads zustand useUiStore -->
+                <path d="M 162 92 C 162 180, 98 230, 98 310" />
+                <!-- Header.tsx reads url-param tab -->
+                <path d="M 178 92 C 178 180, 269 230, 269 310" />
+                <!-- Profile.tsx reads useState user -->
+                <path d="M 492 92 C 492 180, 420 230, 420 310" />
+                <!-- Profile.tsx reads tanstack-query todos -->
+                <path d="M 508 92 C 508 180, 608 230, 608 310" />
+                <!-- Profile.tsx reads zustand useUiStore -->
+                <path d="M 452 92 C 452 210, 112 250, 112 310" />
+              </g>
+
+              <!-- edges: writes (dashed) -->
+              <g
+                fill="none"
+                stroke="var(--text-2)"
+                stroke-opacity="0.75"
+                stroke-width="1.5"
+                stroke-dasharray="5 4"
+              >
+                <!-- Profile.tsx writes useState user -->
+                <path d="M 476 92 C 476 180, 435 230, 435 310" />
+                <!-- Header.tsx writes zustand useUiStore -->
+                <path d="M 146 92 C 146 180, 84 230, 84 310" />
+              </g>
+
+              <!-- edges: the finding's evidence (amber) -->
+              <g
+                fill="none"
+                stroke="var(--chip-med-fg)"
+                stroke-opacity="0.85"
+                stroke-width="1.5"
+              >
+                <!-- Badge.vue reads pinia cart -->
+                <path d="M 744 92 C 744 180, 770 230, 770 310" />
+                <!-- Checkout.vue reads pinia cart -->
+                <path d="M 852 92 C 852 180, 784 230, 784 310" />
+                <!-- Cart.tsx reads local-storage "cart" -->
+                <path d="M 984 92 C 984 180, 950 230, 950 310" />
+              </g>
+              <g
+                fill="none"
+                stroke="var(--chip-med-fg)"
+                stroke-opacity="0.85"
+                stroke-width="1.5"
+                stroke-dasharray="5 4"
+              >
+                <!-- Checkout.vue writes pinia cart -->
+                <path d="M 868 92 C 868 180, 798 230, 798 310" />
+                <!-- Cart.tsx writes local-storage "cart" -->
+                <path d="M 1000 92 C 1000 180, 966 230, 966 310" />
+              </g>
+
+              <!-- component nodes -->
+              <g font-size="13" font-weight="600" text-anchor="middle">
+                <rect
+                  x="117"
+                  y="56"
+                  width="106"
+                  height="36"
+                  rx="10"
+                  fill="var(--surface-tint)"
+                  stroke="var(--edge-strong)"
+                />
+                <text x="170" y="79" fill="var(--react)">Header.tsx</text>
+
+                <rect
+                  x="443"
+                  y="56"
+                  width="114"
+                  height="36"
+                  rx="10"
+                  fill="var(--surface-tint)"
+                  stroke="var(--edge-strong)"
+                />
+                <text x="500" y="79" fill="var(--react)">Profile.tsx</text>
+
+                <rect
+                  x="695"
+                  y="56"
+                  width="98"
+                  height="36"
+                  rx="10"
+                  fill="var(--surface-tint)"
+                  stroke="var(--edge-strong)"
+                />
+                <text x="744" y="79" fill="var(--vue)">Badge.vue</text>
+
+                <rect
+                  x="809"
+                  y="56"
+                  width="122"
+                  height="36"
+                  rx="10"
+                  fill="var(--surface-tint)"
+                  stroke="var(--edge-strong)"
+                />
+                <text x="870" y="79" fill="var(--vue)">Checkout.vue</text>
+
+                <rect
+                  x="947"
+                  y="56"
+                  width="90"
+                  height="36"
+                  rx="10"
+                  fill="var(--surface-tint)"
+                  stroke="var(--edge-strong)"
+                />
+                <text x="992" y="79" fill="var(--react)">Cart.tsx</text>
+              </g>
+
+              <!-- state source pills -->
+              <g font-size="12.5" text-anchor="middle">
+                <rect
+                  x="10"
+                  y="310"
+                  width="178"
+                  height="32"
+                  rx="16"
+                  fill="var(--page)"
+                  stroke="var(--edge-strong)"
+                />
+                <text x="99" y="330">
+                  <tspan fill="var(--text-3)">zustand ·</tspan>
+                  <tspan fill="var(--text)">useUiStore</tspan>
+                </text>
+
+                <rect
+                  x="202"
+                  y="310"
+                  width="134"
+                  height="32"
+                  rx="16"
+                  fill="var(--page)"
+                  stroke="var(--edge-strong)"
+                />
+                <text x="269" y="330">
+                  <tspan fill="var(--text-3)">url-param ·</tspan>
+                  <tspan fill="var(--text)">tab</tspan>
+                </text>
+
+                <rect
+                  x="357"
+                  y="310"
+                  width="141"
+                  height="32"
+                  rx="16"
+                  fill="var(--page)"
+                  stroke="var(--edge-strong)"
+                />
+                <text x="427" y="330">
+                  <tspan fill="var(--text-3)">useState ·</tspan>
+                  <tspan fill="var(--text)">user</tspan>
+                </text>
+
+                <rect
+                  x="512"
+                  y="310"
+                  width="193"
+                  height="32"
+                  rx="16"
+                  fill="var(--page)"
+                  stroke="var(--edge-strong)"
+                />
+                <text x="608" y="330">
+                  <tspan fill="var(--text-3)">tanstack-query ·</tspan>
+                  <tspan fill="var(--text)">todos</tspan>
+                </text>
+
+                <!-- the finding: two sources own the cart entity -->
+                <rect
+                  x="719"
+                  y="310"
+                  width="118"
+                  height="32"
+                  rx="16"
+                  fill="var(--chip-med-bg)"
+                  stroke="var(--chip-med-fg)"
+                />
+                <text x="778" y="330" fill="var(--chip-med-fg)">
+                  pinia · cart
+                </text>
+
+                <rect
+                  x="851"
+                  y="310"
+                  width="193"
+                  height="32"
+                  rx="16"
+                  fill="var(--chip-med-bg)"
+                  stroke="var(--chip-med-fg)"
+                />
+                <text x="947" y="330" fill="var(--chip-med-fg)">
+                  local-storage · "cart"
+                </text>
+              </g>
+
+              <!-- finding bracket + tag -->
+              <g
+                fill="none"
+                stroke="var(--chip-med-fg)"
+                stroke-opacity="0.85"
+                stroke-width="1.5"
+              >
+                <path d="M 778 342 L 778 368 L 947 368 L 947 342" />
+                <path d="M 862 368 L 862 384" />
+              </g>
+              <rect
+                x="746"
+                y="384"
+                width="232"
+                height="30"
+                rx="15"
+                fill="var(--chip-med-bg)"
+                stroke="var(--chip-med-fg)"
+              />
+              <text
+                x="862"
+                y="403"
+                font-size="12.5"
+                font-weight="600"
+                text-anchor="middle"
+                fill="var(--chip-med-fg)"
+              >
+                ▲ multiple-sources-of-truth
+              </text>
+            </svg>
+          </div>
+          <p class="graph-caption">
+            not an artist's impression — scanning
+            <code>examples/mixed-app</code> in this repo produces exactly this
+            graph, and a test pins it. run it yourself:
+            <code>npx statelinter examples/mixed-app --ui</code>
+          </p>
+        </div>
+      </section>
+
       <!-- SHOWCASE -->
-      <section class="band band--vue">
+      <section class="band band--react">
         <div class="wrap">
           <p class="eyebrow">Receipts</p>
           <h2 class="title">The console, on two real example apps.</h2>
@@ -859,7 +1244,7 @@
       </section>
 
       <!-- WHY THESE RULES -->
-      <section class="band band--react">
+      <section class="band band--vue">
         <div class="wrap">
           <p class="eyebrow">Why these rules</p>
           <h2 class="title">statelinter invented none of its opinions.</h2>
@@ -912,7 +1297,7 @@
       </section>
 
       <!-- RULES TABLE -->
-      <section class="band band--vue" id="rules">
+      <section class="band band--react" id="rules">
         <div class="wrap">
           <p class="eyebrow">The catalogue</p>
           <h2 class="title">Eleven rules, across thirteen state surfaces.</h2>
@@ -1049,7 +1434,7 @@
       </section>
 
       <!-- HONESTY -->
-      <section class="band band--react" id="honesty">
+      <section class="band band--vue" id="honesty">
         <div class="wrap">
           <p class="eyebrow">Honesty is the brand</p>
           <h2 class="title">Silence beats lying.</h2>
@@ -1100,7 +1485,7 @@
       </section>
 
       <!-- QUICKSTART -->
-      <section class="band band--vue" id="quickstart">
+      <section class="band band--react" id="quickstart">
         <div class="wrap">
           <p class="eyebrow">Quickstart</p>
           <h2 class="title">Point it at a folder. Gate a PR.</h2>
@@ -1140,6 +1525,49 @@
             <div class="e e2">
               <span class="code">exit 2</span>
               <p>usage error (bad flag, no files found)</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DID WE MISS ANYTHING -->
+      <section class="band band--vue" id="contribute">
+        <div class="wrap">
+          <p class="eyebrow">Contribute</p>
+          <h2 class="title">Did we miss anything?</h2>
+          <div class="miss">
+            <div class="miss-card">
+              <h3>False positives are bugs here.</h3>
+              <p>
+                If statelinter flagged something that's actually fine, that's
+                not noise to shrug at — it's a broken trust contract. File it
+                with the snippet that misfired. Every guard in this codebase
+                started as a false positive on a real repo, and every one is now
+                a permanent regression test. Yours will be too.
+              </p>
+              <div class="miss-links">
+                <a href="https://github.com/miadugas/statelint/issues/new"
+                  >File a false positive →</a
+                >
+              </div>
+            </div>
+            <div class="miss-card">
+              <h3>Want in?</h3>
+              <p>The contributions that land:</p>
+              <ul>
+                <li>a framework pattern the parser doesn't catch yet</li>
+                <li>a rule that misfired on your repo — with the receipts</li>
+                <li>a state tool the graph doesn't model yet</li>
+              </ul>
+              <div class="miss-links">
+                <a href="https://github.com/miadugas/statelint/issues"
+                  >Open issues →</a
+                >
+                <a
+                  href="https://github.com/miadugas/statelint/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22"
+                  >good first issue →</a
+                >
+              </div>
             </div>
           </div>
         </div>
