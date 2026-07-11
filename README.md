@@ -24,7 +24,13 @@ makes it runnable headless in CI on every PR.
 
 ## Install
 
-Not on npm yet. Run it straight from the repo:
+```sh
+npm i -D statelinter
+```
+
+Or skip the install — `npx statelinter src/` works with zero setup.
+
+From source (for contributors):
 
 ```sh
 git clone https://github.com/miadugas/statelint.git && cd statelint
