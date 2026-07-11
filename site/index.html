@@ -762,6 +762,171 @@
       .foot-meta .r {
         color: var(--vue);
       }
+
+      /* ─── Rules table → stacked cards on mobile ──────────────────────── */
+      @media (max-width: 720px) {
+        .table-scroll {
+          overflow: visible;
+          border: none;
+          background: none;
+          box-shadow: none;
+          border-radius: 0;
+        }
+        table.rules,
+        table.rules tbody {
+          display: block;
+          width: 100%;
+          min-width: 0;
+        }
+        table.rules thead {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          white-space: nowrap;
+        }
+        table.rules tr {
+          display: block;
+          background: var(--surface);
+          border: 1px solid var(--edge);
+          border-radius: 14px;
+          padding: 16px 18px 18px;
+          box-shadow: var(--shadow);
+          margin-bottom: 14px;
+        }
+        table.rules tr:last-child {
+          margin-bottom: 0;
+        }
+        table.rules td {
+          display: block;
+          border: none;
+          padding: 0;
+        }
+        table.rules td.rule code {
+          white-space: normal;
+          overflow-wrap: anywhere;
+          font-size: 14px;
+        }
+        table.rules td.fires,
+        table.rules td.rec {
+          font-size: 13.5px;
+        }
+        table.rules td.fires::before,
+        table.rules td.rec::before {
+          content: "Fires when";
+          display: block;
+          margin: 13px 0 3px;
+          font-size: 10.5px;
+          font-weight: 700;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--text-3);
+        }
+        table.rules td.rec::before {
+          content: "Recommends";
+        }
+      }
+
+      /* ─── Graph: full-view affordance + modal ────────────────────────── */
+      .graph-actions {
+        margin-top: 10px;
+        display: flex;
+        justify-content: flex-end;
+      }
+      .graph-expand {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--text-2);
+        background: var(--surface-tint);
+        border: 1px solid var(--edge-strong);
+        border-radius: var(--radius-pill);
+        padding: 6px 14px;
+        cursor: pointer;
+      }
+      .graph-expand:hover {
+        color: var(--text);
+        border-color: var(--react);
+      }
+      dialog.graph-modal {
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--text);
+        width: 100vw;
+        height: 100vh;
+        max-width: 100vw;
+        max-height: 100vh;
+        margin: 0;
+        overflow: hidden;
+      }
+      dialog.graph-modal::backdrop {
+        background: rgba(8, 9, 10, 0.82);
+        backdrop-filter: blur(3px);
+      }
+      dialog.graph-modal[open] {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .graph-modal-inner {
+        background: var(--surface);
+        border: 1px solid var(--edge-strong);
+        border-radius: 16px;
+        box-shadow: var(--term-shadow);
+        width: min(1180px, 94vw);
+        max-height: 92vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .graph-modal-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 11px 14px;
+        border-bottom: 1px solid var(--edge);
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text-3);
+      }
+      .graph-modal-close {
+        flex: none;
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        background: var(--surface-tint);
+        border: 1px solid var(--edge-strong);
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 15px;
+        cursor: pointer;
+      }
+      .graph-modal-close:hover {
+        border-color: var(--react);
+      }
+      .graph-modal-body {
+        overflow: auto;
+        padding: 16px;
+        -webkit-overflow-scrolling: touch;
+      }
+      .graph-modal-body svg {
+        display: block;
+        width: 100%;
+        min-width: 820px;
+        height: auto;
+        font-family: var(--mono);
+      }
+      .graph-modal-hint {
+        display: none;
+      }
+      @media (max-width: 720px) {
+        .graph-modal-hint {
+          display: inline;
+        }
+      }
     </style>
   </head>
   <body>
@@ -851,19 +1016,19 @@
       <section class="band band--vue" id="model">
         <div class="wrap">
           <p class="eyebrow">The model</p>
-          <h2 class="title">Every state source in your app — one graph.</h2>
+          <h2 class="title">Thirteen state surfaces — one graph.</h2>
           <p class="lede">
-            Every state tool as one graph — each source classified
-            <code>server-cache</code> / <code>global-client</code> /
-            <code>local</code> / <code>derived</code>, every read and write an
-            edge. Detectors are pure graph queries, not per-file lint.
+            Each source classified <code>server-cache</code> /
+            <code>global-client</code> / <code>local</code> /
+            <code>derived</code>, every read and write an edge. Detectors are
+            pure graph queries, not per-file lint.
           </p>
           <!-- This SVG is the literal scan of examples/mixed-app — kinds,
                names, edges, and the single finding are pinned by
                src/graph/site-graph.test.ts. Change one, change both. -->
           <div class="graph-panel">
             <svg
-              viewBox="0 0 1060 448"
+              viewBox="0 0 1044 300"
               xmlns="http://www.w3.org/2000/svg"
               role="img"
               aria-labelledby="graph-title graph-desc"
@@ -883,48 +1048,69 @@
                 because two global sources own the same cart entity.
               </desc>
 
+              <!-- cluster captions + ecosystem divider -->
+              <g
+                font-size="11"
+                font-weight="700"
+                letter-spacing="0.12em"
+                fill="var(--text-3)"
+                text-anchor="middle"
+              >
+                <text x="320" y="23">REACT</text>
+                <text x="828" y="23">VUE + CONTESTED CART</text>
+              </g>
+              <line
+                x1="699"
+                y1="40"
+                x2="699"
+                y2="232"
+                stroke="var(--edge-strong)"
+                stroke-width="1.5"
+                stroke-dasharray="3 6"
+              />
+
               <!-- legend -->
-              <g font-size="12" fill="var(--text-3)">
+              <g font-size="11.5" fill="var(--text-3)">
                 <line
                   x1="16"
-                  y1="24"
-                  x2="44"
-                  y2="24"
+                  y1="19"
+                  x2="42"
+                  y2="19"
                   stroke="var(--text-3)"
-                  stroke-opacity="0.55"
+                  stroke-opacity="0.6"
                   stroke-width="1.5"
                 />
-                <text x="52" y="28">read</text>
+                <text x="50" y="23">read</text>
                 <line
-                  x1="104"
-                  y1="24"
-                  x2="132"
-                  y2="24"
+                  x1="96"
+                  y1="19"
+                  x2="122"
+                  y2="19"
                   stroke="var(--text-2)"
-                  stroke-opacity="0.75"
+                  stroke-opacity="0.8"
                   stroke-width="1.5"
                   stroke-dasharray="5 4"
                 />
-                <text x="140" y="28">write</text>
+                <text x="130" y="23">write</text>
               </g>
 
-              <!-- edges: reads (solid, subtle) -->
+              <!-- edges: reads (solid, subtle) — one gentle S-curve language -->
               <g
                 fill="none"
                 stroke="var(--text-3)"
                 stroke-opacity="0.55"
                 stroke-width="1.5"
               >
-                <!-- Header.tsx reads zustand useUiStore -->
-                <path d="M 162 92 C 162 180, 98 230, 98 310" />
                 <!-- Header.tsx reads url-param tab -->
-                <path d="M 178 92 C 178 180, 269 230, 269 310" />
-                <!-- Profile.tsx reads useState user -->
-                <path d="M 492 92 C 492 180, 420 230, 420 310" />
-                <!-- Profile.tsx reads tanstack-query todos -->
-                <path d="M 508 92 C 508 180, 608 230, 608 310" />
+                <path d="M 148 70 C 148 128 79 138 79 196" />
+                <!-- Header.tsx reads zustand useUiStore -->
+                <path d="M 158 70 C 158 128 236 138 236 196" />
                 <!-- Profile.tsx reads zustand useUiStore -->
-                <path d="M 452 92 C 452 210, 112 250, 112 310" />
+                <path d="M 396 70 C 396 128 252 138 252 196" />
+                <!-- Profile.tsx reads useState user -->
+                <path d="M 404 70 C 404 128 406 138 406 196" />
+                <!-- Profile.tsx reads tanstack-query todos -->
+                <path d="M 424 70 C 424 128 588 138 588 196" />
               </g>
 
               <!-- edges: writes (dashed) -->
@@ -935,196 +1121,199 @@
                 stroke-width="1.5"
                 stroke-dasharray="5 4"
               >
-                <!-- Profile.tsx writes useState user -->
-                <path d="M 476 92 C 476 180, 435 230, 435 310" />
                 <!-- Header.tsx writes zustand useUiStore -->
-                <path d="M 146 92 C 146 180, 84 230, 84 310" />
+                <path d="M 170 70 C 170 128 252 138 252 196" />
+                <!-- Profile.tsx writes useState user -->
+                <path d="M 416 70 C 416 128 418 138 418 196" />
               </g>
 
-              <!-- edges: the finding's evidence (amber) -->
+              <!-- edges: the finding's evidence (amber reads) -->
               <g
                 fill="none"
                 stroke="var(--chip-med-fg)"
-                stroke-opacity="0.85"
-                stroke-width="1.5"
+                stroke-opacity="0.9"
+                stroke-width="1.6"
               >
                 <!-- Badge.vue reads pinia cart -->
-                <path d="M 744 92 C 744 180, 770 230, 770 310" />
+                <path d="M 716 70 C 716 128 766 138 766 196" />
                 <!-- Checkout.vue reads pinia cart -->
-                <path d="M 852 92 C 852 180, 784 230, 784 310" />
+                <path d="M 824 70 C 824 128 778 138 778 196" />
                 <!-- Cart.tsx reads local-storage "cart" -->
-                <path d="M 984 92 C 984 180, 950 230, 950 310" />
+                <path d="M 934 70 C 934 128 930 138 930 196" />
               </g>
+              <!-- edges: the finding's evidence (amber writes) -->
               <g
                 fill="none"
                 stroke="var(--chip-med-fg)"
-                stroke-opacity="0.85"
-                stroke-width="1.5"
+                stroke-opacity="0.9"
+                stroke-width="1.6"
                 stroke-dasharray="5 4"
               >
                 <!-- Checkout.vue writes pinia cart -->
-                <path d="M 868 92 C 868 180, 798 230, 798 310" />
+                <path d="M 836 70 C 836 128 786 138 786 196" />
                 <!-- Cart.tsx writes local-storage "cart" -->
-                <path d="M 1000 92 C 1000 180, 966 230, 966 310" />
+                <path d="M 946 70 C 946 128 942 138 942 196" />
               </g>
 
               <!-- component nodes -->
               <g font-size="13" font-weight="600" text-anchor="middle">
                 <rect
-                  x="117"
-                  y="56"
-                  width="106"
-                  height="36"
-                  rx="10"
+                  x="108"
+                  y="36"
+                  width="104"
+                  height="34"
+                  rx="9"
                   fill="var(--surface-tint)"
                   stroke="var(--edge-strong)"
                 />
-                <text x="170" y="79" fill="var(--react)">Header.tsx</text>
+                <text x="160" y="58" fill="var(--react)">Header.tsx</text>
 
                 <rect
-                  x="443"
-                  y="56"
+                  x="353"
+                  y="36"
                   width="114"
-                  height="36"
-                  rx="10"
+                  height="34"
+                  rx="9"
                   fill="var(--surface-tint)"
                   stroke="var(--edge-strong)"
                 />
-                <text x="500" y="79" fill="var(--react)">Profile.tsx</text>
+                <text x="410" y="58" fill="var(--react)">Profile.tsx</text>
 
                 <rect
-                  x="695"
-                  y="56"
-                  width="98"
-                  height="36"
-                  rx="10"
+                  x="668"
+                  y="36"
+                  width="96"
+                  height="34"
+                  rx="9"
                   fill="var(--surface-tint)"
                   stroke="var(--edge-strong)"
                 />
-                <text x="744" y="79" fill="var(--vue)">Badge.vue</text>
+                <text x="716" y="58" fill="var(--vue)">Badge.vue</text>
 
                 <rect
-                  x="809"
-                  y="56"
-                  width="122"
-                  height="36"
-                  rx="10"
+                  x="771"
+                  y="36"
+                  width="118"
+                  height="34"
+                  rx="9"
                   fill="var(--surface-tint)"
                   stroke="var(--edge-strong)"
                 />
-                <text x="870" y="79" fill="var(--vue)">Checkout.vue</text>
+                <text x="830" y="58" fill="var(--vue)">Checkout.vue</text>
 
                 <rect
-                  x="947"
-                  y="56"
-                  width="90"
-                  height="36"
-                  rx="10"
+                  x="898"
+                  y="36"
+                  width="84"
+                  height="34"
+                  rx="9"
                   fill="var(--surface-tint)"
                   stroke="var(--edge-strong)"
                 />
-                <text x="992" y="79" fill="var(--react)">Cart.tsx</text>
+                <text x="940" y="58" fill="var(--react)">Cart.tsx</text>
               </g>
 
               <!-- state source pills -->
               <g font-size="12.5" text-anchor="middle">
                 <rect
-                  x="10"
-                  y="310"
-                  width="178"
-                  height="32"
-                  rx="16"
-                  fill="var(--page)"
-                  stroke="var(--edge-strong)"
-                />
-                <text x="99" y="330">
-                  <tspan fill="var(--text-3)">zustand ·</tspan>
-                  <tspan fill="var(--text)">useUiStore</tspan>
-                </text>
-
-                <rect
-                  x="202"
-                  y="310"
+                  x="12"
+                  y="196"
                   width="134"
                   height="32"
                   rx="16"
                   fill="var(--page)"
                   stroke="var(--edge-strong)"
                 />
-                <text x="269" y="330">
+                <text x="79" y="216">
                   <tspan fill="var(--text-3)">url-param ·</tspan>
                   <tspan fill="var(--text)">tab</tspan>
                 </text>
 
                 <rect
-                  x="357"
-                  y="310"
-                  width="141"
+                  x="156"
+                  y="196"
+                  width="176"
                   height="32"
                   rx="16"
                   fill="var(--page)"
                   stroke="var(--edge-strong)"
                 />
-                <text x="427" y="330">
+                <text x="244" y="216">
+                  <tspan fill="var(--text-3)">zustand ·</tspan>
+                  <tspan fill="var(--text)">useUiStore</tspan>
+                </text>
+
+                <rect
+                  x="342"
+                  y="196"
+                  width="140"
+                  height="32"
+                  rx="16"
+                  fill="var(--page)"
+                  stroke="var(--edge-strong)"
+                />
+                <text x="412" y="216">
                   <tspan fill="var(--text-3)">useState ·</tspan>
                   <tspan fill="var(--text)">user</tspan>
                 </text>
 
                 <rect
-                  x="512"
-                  y="310"
-                  width="193"
+                  x="492"
+                  y="196"
+                  width="192"
                   height="32"
                   rx="16"
                   fill="var(--page)"
                   stroke="var(--edge-strong)"
                 />
-                <text x="608" y="330">
+                <text x="588" y="216">
                   <tspan fill="var(--text-3)">tanstack-query ·</tspan>
                   <tspan fill="var(--text)">todos</tspan>
                 </text>
 
-                <!-- the finding: two sources own the cart entity -->
+                <!-- the finding: two global sources own the cart entity -->
                 <rect
-                  x="719"
-                  y="310"
-                  width="118"
+                  x="714"
+                  y="196"
+                  width="116"
                   height="32"
                   rx="16"
                   fill="var(--chip-med-bg)"
                   stroke="var(--chip-med-fg)"
                 />
-                <text x="778" y="330" fill="var(--chip-med-fg)">
-                  pinia · cart
+                <text x="772" y="216">
+                  <tspan fill="var(--text-3)">pinia ·</tspan>
+                  <tspan fill="var(--chip-med-fg)">cart</tspan>
                 </text>
 
                 <rect
-                  x="851"
-                  y="310"
-                  width="193"
+                  x="840"
+                  y="196"
+                  width="192"
                   height="32"
                   rx="16"
                   fill="var(--chip-med-bg)"
                   stroke="var(--chip-med-fg)"
                 />
-                <text x="947" y="330" fill="var(--chip-med-fg)">
-                  local-storage · "cart"
+                <text x="936" y="216">
+                  <tspan fill="var(--text-3)">local-storage ·</tspan>
+                  <tspan fill="var(--chip-med-fg)">"cart"</tspan>
                 </text>
               </g>
 
-              <!-- finding bracket + tag -->
+              <!-- finding bracket + tag — aligned under the two cart sources -->
               <g
                 fill="none"
                 stroke="var(--chip-med-fg)"
-                stroke-opacity="0.85"
-                stroke-width="1.5"
+                stroke-opacity="0.9"
+                stroke-width="1.6"
               >
-                <path d="M 778 342 L 778 368 L 947 368 L 947 342" />
-                <path d="M 862 368 L 862 384" />
+                <path d="M 772 230 L 772 242 L 936 242 L 936 230" />
+                <path d="M 854 242 L 854 256" />
               </g>
               <rect
-                x="746"
-                y="384"
+                x="738"
+                y="258"
                 width="232"
                 height="30"
                 rx="15"
@@ -1132,8 +1321,8 @@
                 stroke="var(--chip-med-fg)"
               />
               <text
-                x="862"
-                y="403"
+                x="854"
+                y="277"
                 font-size="12.5"
                 font-weight="600"
                 text-anchor="middle"
@@ -1143,6 +1332,39 @@
               </text>
             </svg>
           </div>
+          <div class="graph-actions">
+            <button
+              class="graph-expand"
+              type="button"
+              aria-haspopup="dialog"
+              data-graph-open
+            >
+              view full graph →
+            </button>
+          </div>
+          <dialog
+            class="graph-modal"
+            aria-label="statelinter state graph, full view"
+          >
+            <div class="graph-modal-inner">
+              <div class="graph-modal-bar">
+                <span
+                  >statelinter · state graph<span class="graph-modal-hint">
+                    — scroll to pan, rotate for detail</span
+                  ></span
+                >
+                <button
+                  class="graph-modal-close"
+                  type="button"
+                  aria-label="Close full graph"
+                  autofocus
+                >
+                  ✕
+                </button>
+              </div>
+              <div class="graph-modal-body" data-graph-target></div>
+            </div>
+          </dialog>
           <p class="graph-caption">
             not an artist's impression — scanning
             <code>examples/mixed-app</code> in this repo produces exactly this
@@ -1605,6 +1827,42 @@
             /* clipboard unavailable — no-op */
           }
         });
+      }
+
+      const graphOpen = document.querySelector("[data-graph-open]");
+      const graphModal = document.querySelector("dialog.graph-modal");
+      const graphTarget = document.querySelector("[data-graph-target]");
+      const graphSource = document.querySelector(".graph-panel svg");
+      if (graphOpen && graphModal && graphTarget && graphSource) {
+        const graphClose = graphModal.querySelector(".graph-modal-close");
+        graphOpen.addEventListener("click", () => {
+          if (!graphTarget.childElementCount) {
+            const clone = graphSource.cloneNode(true);
+            // ids would collide with the inline copy — strip them on the clone
+            clone
+              .querySelectorAll("[id]")
+              .forEach((el) => el.removeAttribute("id"));
+            clone.removeAttribute("aria-labelledby");
+            clone.setAttribute(
+              "aria-label",
+              "statelinter state graph, full view",
+            );
+            graphTarget.appendChild(clone);
+          }
+          graphModal.showModal();
+          // the amber finding lives at the right edge — when the SVG is
+          // wider than the dialog viewport, open scrolled to it, not to
+          // the far-left React cluster
+          graphTarget.scrollLeft =
+            graphTarget.scrollWidth - graphTarget.clientWidth;
+        });
+        if (graphClose) {
+          graphClose.addEventListener("click", () => graphModal.close());
+        }
+        graphModal.addEventListener("click", (e) => {
+          if (e.target === graphModal) graphModal.close();
+        });
+        graphModal.addEventListener("close", () => graphOpen.focus());
       }
     </script>
   </body>

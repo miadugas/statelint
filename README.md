@@ -208,6 +208,14 @@ Honesty is the product's brand — here's what it doesn't cover yet:
    effects, and updater-form `set(prev => …)` are all excluded. A finding you can't
    trust is worse than no finding.
 
+## Supply chain
+
+- **Two runtime dependencies** — `@typescript-eslint/typescript-estree`, `@vue/compiler-sfc`. 35 packages, ~37 MB transitive on a clean install.
+- **Zero install scripts in the dependency tree.** Nothing executes on `npm install statelinter`, and statelinter itself ships no lifecycle scripts. CI installs with `npm ci --ignore-scripts` — a transitive dep adding one later becomes a build failure, not an execution.
+- **Publishing is manual**, gated by hardware-key 2FA. No npm tokens exist in CI.
+- **Lockfile committed**; CI installs from it (`npm ci`).
+- **`npm audit`: no known vulnerabilities** as of 2026-07-11.
+
 ## Status
 
 Published as [`statelinter`](https://www.npmjs.com/package/statelinter) on npm —
