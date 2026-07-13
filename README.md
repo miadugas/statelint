@@ -133,19 +133,20 @@ describe the app, not its tests.
 
 ## The rules
 
-| Rule                           | Fires when                                                                                                                                                | Recommends                                                                           |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `multiple-sources-of-truth`    | one entity owned by 2+ global sources (context / store — zustand, redux, pinia, vuex / provide-inject / storage / URL / cookie), or server-cached twice   | Consolidate on one owner                                                             |
-| `server-state-in-client-state` | `useState`/`ref` fed by fetch/await in an effect or lifecycle hook, grouped per effect; prefilled drafts soften to Low                                    | TanStack / RTK Query, or Nuxt's useAsyncData/useFetch                                |
-| `derived-state-as-state`       | `useState`/`ref` recomputed from other state by a synchronous effect/watcher                                                                              | `useMemo`/`computed` — delete the state + effect                                     |
-| `storage-as-state`             | a localStorage/sessionStorage key read+written across 2+ components (non-reactive)                                                                        | own it in one store with `persist`                                                   |
-| `cookie-as-state`              | a cookie shared across components via js-cookie / react-cookie / `document.cookie`                                                                        | one reactive owner; persist from there                                               |
-| `url-state-forked`             | a `useState` copy of a URL search param that goes stale on back/forward                                                                                   | read the param directly                                                              |
-| `prop-drilling`                | a JSX prop or Vue template bind passes through N components that only forward it (cross-file, blind hops named)                                           | Context/store, or composition (children / slots)                                     |
-| `over-globalized-state`        | a global store (zustand / redux / pinia / vuex) or context/provide-inject with exactly one real consumer; dead provided values                            | colocate / delete                                                                    |
-| `over-broad-selector`          | bare `useStore()` or identity selector on a zustand store, or a component-scope `$subscribe` on a whole pinia store (its callback runs on every mutation) | narrow the selector (zustand); `watch` a specific field, or a persist plugin (pinia) |
-| `defeated-memo`                | `React.memo` receiving inline object/array/function props — the memo never holds (React only)                                                             | stabilize the props, or drop the memo                                                |
-| `pointless-memo`               | `useMemo`/`useCallback` with no deps array, or an inline literal in the deps (React only)                                                                 | fix the deps, or compute inline                                                      |
+| Rule                           | Fires when                                                                                                                                                                                        | Recommends                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `multiple-sources-of-truth`    | one entity owned by 2+ global sources (context / store — zustand, redux, pinia, vuex / provide-inject / storage / URL / cookie), or server-cached twice                                           | Consolidate on one owner                                                             |
+| `server-state-in-client-state` | `useState`/`ref` fed by fetch/await in an effect or lifecycle hook, grouped per effect; prefilled drafts soften to Low                                                                            | TanStack / RTK Query, or Nuxt's useAsyncData/useFetch                                |
+| `derived-state-as-state`       | `useState`/`ref` recomputed from other state by a synchronous effect/watcher                                                                                                                      | `useMemo`/`computed` — delete the state + effect                                     |
+| `storage-as-state`             | a localStorage/sessionStorage key read+written across 2+ components (non-reactive)                                                                                                                | own it in one store with `persist`                                                   |
+| `cookie-as-state`              | a cookie shared across components via js-cookie / react-cookie / `document.cookie`                                                                                                                | one reactive owner; persist from there                                               |
+| `url-state-forked`             | a `useState` copy of a URL search param that goes stale on back/forward                                                                                                                           | read the param directly                                                              |
+| `prop-drilling`                | a JSX prop or Vue template bind passes through N components that only forward it (cross-file, blind hops named)                                                                                   | Context/store, or composition (children / slots)                                     |
+| `over-globalized-state`        | a global store (zustand / redux / pinia / vuex) or context/provide-inject with exactly one real consumer; dead provided values                                                                    | colocate / delete                                                                    |
+| `over-broad-selector`          | bare `useStore()` or identity selector on a zustand store, or a component-scope `$subscribe` on a whole pinia store (its callback runs on every mutation)                                         | narrow the selector (zustand); `watch` a specific field, or a persist plugin (pinia) |
+| `defeated-memo`                | `React.memo` receiving inline object/array/function props — the memo never holds (React only)                                                                                                     | stabilize the props, or drop the memo                                                |
+| `unstable-context-value`       | a context provider handed an inline object/array/function `value` (`<Ctx.Provider>` or React 19 `<Ctx value>`) with 1+ consumer — every consumer re-renders on every provider render (React only) | `useMemo` the value (`useCallback` a function), or hoist a constant                  |
+| `pointless-memo`               | `useMemo`/`useCallback` with no deps array, or an inline literal in the deps (React only)                                                                                                         | fix the deps, or compute inline                                                      |
 
 ---
 
@@ -171,7 +172,7 @@ Thirteen state surfaces across React and Vue, plus memoization, modeled as one g
 
 Plus, not counted as state surfaces but part of the same graph:
 
-- **Memoization** (React only) — `React.memo`, `useMemo`, `useCallback` structural breakage
+- **Memoization** (React only) — `React.memo`, `useMemo`, `useCallback` structural breakage, plus unstable context provider values (an inline literal `value` re-renders every consumer)
 - **Nuxt 3** — auto-imports resolved without import statements (with local-shadow guards); Nuxt itself is detected via its own composables (`useAsyncData`/`useFetch`/`definePageMeta`/…), and recommendations switch to those instead of a React query library
 - **Vue template analysis** — `:prop` binds build the prop-drilling graph across SFCs (kebab-case tags/props normalized, Nuxt auto-registered components resolved by unique name, ambiguity = refuse to guess); `{{ interpolation }}` and directive expressions count as reads; `v-model` and handler mutations (`@click="x = ..."`) are detected precisely from the template AST
 - **Cross-file** — everything resolves through default/named/aliased imports, `index.*` re-exports, and `.vue` SFC boundaries; same-named locals in different files never collide
@@ -225,7 +226,7 @@ Honesty is the product's brand — here's what it doesn't cover yet:
 ## Status
 
 Published as [`statelinter`](https://www.npmjs.com/package/statelinter) on npm —
-early/beta, in testing. 251 tests, dogfooded on a production React PWA, a 409-file
+early/beta, in testing. 263 tests, dogfooded on a production React PWA, a 409-file
 production Redux app, and a 31-SFC production Nuxt 3 site — where several false
 positives were found and each became a permanent guard and regression test.
 

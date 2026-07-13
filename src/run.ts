@@ -17,6 +17,7 @@ import { detectPropDrilling } from "./detectors/prop-drilling.js";
 import { detectServerStateInClientState } from "./detectors/server-state.js";
 import { computeStackProfile } from "./detectors/stack.js";
 import { detectStorageAsState } from "./detectors/storage-as-state.js";
+import { detectUnstableContextValue } from "./detectors/unstable-context-value.js";
 import { detectUrlStateForked } from "./detectors/url-fork.js";
 import type { Finding } from "./detectors/types.js";
 import type { StateGraph, StateKind } from "./graph/schema.js";
@@ -99,6 +100,7 @@ export function runStatelinter(
     ...detectUrlStateForked(graph),
     ...detectDerivedStateAsState(graph),
     ...detectDefeatedMemo(graph),
+    ...detectUnstableContextValue(graph),
     ...detectPointlessMemo(graph),
     ...detectPropDrilling(graph, {
       minBlindIntermediates: options.minBlindIntermediates,

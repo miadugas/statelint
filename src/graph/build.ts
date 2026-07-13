@@ -1319,6 +1319,56 @@ function analyzeSharedStateUsage(
     );
   }
 
+  // Inspect a provider element's `value={...}` attribute: is it an inline
+  // object/array/function literal (a new reference every render), and where?
+  const providerValue = (
+    node: TSESTree.JSXOpeningElement,
+  ): { inline: boolean; loc?: SourceLoc } => {
+    for (const attr of node.attributes) {
+      if (
+        attr.type === "JSXAttribute" &&
+        attr.name.type === "JSXIdentifier" &&
+        attr.name.name === "value" &&
+        attr.value?.type === "JSXExpressionContainer"
+      ) {
+        return {
+          inline: isInlineRefLiteral(attr.value.expression),
+          loc: toLoc(comp.file, attr),
+        };
+      }
+    }
+    return { inline: false };
+  };
+
+  // provides edges dedup first-wins on `provides|<ctxId>`. If a later mount of
+  // the same provider carries an inline value, upgrade the existing edge rather
+  // than let the earlier inline=false edge swallow the re-render signal.
+  const pushProvides = (
+    ctxId: StateId,
+    info: { inline: boolean; loc?: SourceLoc },
+  ) => {
+    const key = `provides|${ctxId}`;
+    if (seen.has(key)) {
+      if (!info.inline) return;
+      const existing = edges.find(
+        (e) => e.type === "provides" && e.from === comp.id && e.to === ctxId,
+      );
+      if (existing && existing.type === "provides" && !existing.inline) {
+        existing.inline = true;
+        existing.loc = info.loc;
+      }
+      return;
+    }
+    seen.add(key);
+    edges.push({
+      type: "provides",
+      from: comp.id,
+      to: ctxId,
+      inline: info.inline,
+      loc: info.loc,
+    });
+  };
+
   walk(comp.fn, (node) => {
     if (node.type !== "JSXOpeningElement") return;
 
@@ -1329,22 +1379,14 @@ function analyzeSharedStateUsage(
       node.name.property.name === "Provider"
     ) {
       const ctxId = resolveContext(from, node.name.object.name, records);
-      if (ctxId)
-        push(
-          { type: "provides", from: comp.id, to: ctxId },
-          `provides|${ctxId}`,
-        );
+      if (ctxId) pushProvides(ctxId, providerValue(node));
       return;
     }
 
     // React 19: <Ctx value={...}> — a bare context element used as provider.
     if (node.name.type === "JSXIdentifier") {
       const ctxId = resolveContext(from, node.name.name, records);
-      if (ctxId)
-        push(
-          { type: "provides", from: comp.id, to: ctxId },
-          `provides|${ctxId}`,
-        );
+      if (ctxId) pushProvides(ctxId, providerValue(node));
     }
   });
 }

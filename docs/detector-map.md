@@ -39,10 +39,11 @@ Status: ✅ shipped · 🔜 planned.
 
 ## Static — Memoization (React only)
 
-| Status | Detector                                                                     | Recommendation                        |
-| ------ | ---------------------------------------------------------------------------- | ------------------------------------- |
-| ✅     | Defeated `React.memo` (inline object/array/function props)                   | Stabilize the props, or drop the memo |
-| ✅     | Pointless `useMemo`/`useCallback` (no deps array, or inline literal in deps) | Fix the deps, or compute inline       |
+| Status | Detector                                                                                     | Recommendation                                                      |
+| ------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| ✅     | Defeated `React.memo` (inline object/array/function props)                                   | Stabilize the props, or drop the memo                               |
+| ✅     | Unstable context value (inline object/array/function `value` on a provider with 1+ consumer) | `useMemo` the value (`useCallback` a function), or hoist a constant |
+| ✅     | Pointless `useMemo`/`useCallback` (no deps array, or inline literal in deps)                 | Fix the deps, or compute inline                                     |
 
 ## Runtime — Impact / ranking (Fiber hook) — all planned
 

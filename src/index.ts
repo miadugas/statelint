@@ -11,6 +11,7 @@ export { detectUrlStateForked } from "./detectors/url-fork.js";
 export { detectCookieAsState } from "./detectors/cookie-as-state.js";
 export { detectDerivedStateAsState } from "./detectors/derived-state.js";
 export { detectDefeatedMemo } from "./detectors/defeated-memo.js";
+export { detectUnstableContextValue } from "./detectors/unstable-context-value.js";
 export { detectPointlessMemo } from "./detectors/pointless-memo.js";
 export { computeStackProfile, NEUTRAL_PROFILE } from "./detectors/stack.js";
 export type { StackProfile } from "./detectors/stack.js";

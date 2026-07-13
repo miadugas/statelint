@@ -58,11 +58,14 @@ describe("context adapter", () => {
     expect(source?.kind).toBe("context");
     expect(source?.classification).toBe("global-client");
 
-    expect(graph.edges).toContainEqual({
-      type: "provides",
-      from: "src/App.tsx#App",
-      to: ctxId,
-    });
+    expect(
+      graph.edges.some(
+        (e) =>
+          e.type === "provides" &&
+          e.from === "src/App.tsx#App" &&
+          e.to === ctxId,
+      ),
+    ).toBe(true);
 
     const consumers = graph.edges
       .filter((e) => e.type === "consumes" && e.to === ctxId)

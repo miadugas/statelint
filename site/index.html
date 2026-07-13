@@ -1522,7 +1522,7 @@
       <section class="band band--react" id="rules">
         <div class="wrap">
           <p class="eyebrow">The catalogue</p>
-          <h2 class="title">Eleven rules, across thirteen state surfaces.</h2>
+          <h2 class="title">Twelve rules, across thirteen state surfaces.</h2>
           <p class="lede">
             Recommendations are stack- and framework-aware: statelinter names
             the dominant tool your app leans on and phrases the fix in the
@@ -1637,6 +1637,21 @@
                     object/array/function props — the memo never holds
                   </td>
                   <td class="rec">stabilize the props, or drop the memo</td>
+                </tr>
+                <tr>
+                  <td class="rule">
+                    <code>unstable-context-value</code
+                    ><span class="only react">React</span>
+                  </td>
+                  <td class="fires">
+                    a context provider handed an inline object/array/function
+                    <code>value</code> (with 1+ consumer) — every consumer
+                    re-renders on every provider render
+                  </td>
+                  <td class="rec">
+                    <code>useMemo</code> the value (<code>useCallback</code> a
+                    function), or hoist a constant
+                  </td>
                 </tr>
                 <tr>
                   <td class="rule">

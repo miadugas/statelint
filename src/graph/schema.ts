@@ -132,8 +132,17 @@ export type Edge =
       inline?: boolean;
       loc?: SourceLoc;
     }
-  /** Component mounts a Context/Store provider for the source. */
-  | { type: "provides"; from: ComponentId; to: StateId }
+  /** Component mounts a Context/Store provider for the source. `inline` = the
+   * `value` was an inline object/array/function literal — a new reference every
+   * render, so every consumer re-renders. `loc` points at the `value` site.
+   * (React only; Vue provide() emits plain provides edges with neither.) */
+  | {
+      type: "provides";
+      from: ComponentId;
+      to: StateId;
+      inline?: boolean;
+      loc?: SourceLoc;
+    }
   /** Component consumes a Context/Store source. */
   | { type: "consumes"; from: ComponentId; to: StateId; via: ReadVia }
   /** A source is computed from another source (derived-state dependency). */
