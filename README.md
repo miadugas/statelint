@@ -221,7 +221,7 @@ Honesty is the product's brand — here's what it doesn't cover yet:
 - **Zero install scripts in the dependency tree.** Nothing executes on `npm install statelinter`, and statelinter itself ships no lifecycle scripts. CI installs with `npm ci --ignore-scripts` — a transitive dep adding one later becomes a build failure, not an execution.
 - **Publishing is manual**, gated by hardware-key 2FA. No npm tokens exist in CI.
 - **Lockfile committed**; CI installs from it (`npm ci`).
-- **`npm audit`: no known vulnerabilities** as of 2026-07-11.
+- **`npm audit`: no known vulnerabilities** as of 2026-07-19.
 
 ## Status
 
@@ -241,3 +241,7 @@ Docs: [positioning brief](docs/positioning.md) · [detector map](docs/detector-m
 
 Runtime data (the React Fiber hook) is a planned _enrichment_ layer for ranking
 findings by real impact — never the architecture.
+
+## Credits
+
+Testing & QA: [Mel](https://github.com/Melmonster13)
