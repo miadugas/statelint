@@ -245,3 +245,7 @@ findings by real impact — never the architecture.
 ## Credits
 
 Testing & QA: [Mel](https://github.com/Melmonster13)
+
+## License
+
+[MIT](LICENSE)
